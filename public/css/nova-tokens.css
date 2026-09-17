@@ -1,0 +1,133 @@
+/* ============================================================
+   NOVA TOKENS — CS server-ops console identity
+   Display: Space Grotesk · Body: Inter · Data: JetBrains Mono
+   ============================================================ */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+:root {
+  color-scheme: dark;
+  --ink: #060a15;
+  --ops: #0c1322;
+  --surface: rgba(19, 26, 43, 0.78);
+  --surface-solid: #131a2b;
+  --surface-2: rgba(32, 41, 63, 0.55);
+  --line: rgba(148, 163, 184, 0.14);
+  --line-strong: rgba(148, 163, 184, 0.3);
+  --text: #edf1fa;
+  --muted: #8d99b4;
+  --net: #7c5cff;
+  --ice: #00e0c6;
+  --respawn: #22e584;
+  --flash: #ffb020;
+  --headshot: #ff5d5d;
+  --info: #4cc3ff;
+  --grad: linear-gradient(135deg, #7c5cff 0%, #00e0c6 100%);
+  --r-lg: 18px;
+  --r-md: 12px;
+  --r-sm: 9px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --glow: 0 0 24px rgba(124, 92, 255, 0.35);
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", "Roboto", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --t-fast: 160ms;
+  --t: 240ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.vmp-light {
+  color-scheme: light;
+  --ink: #e9edf6;
+  --ops: #dde4f1;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-solid: #ffffff;
+  --surface-2: rgba(238, 242, 250, 0.95);
+  --line: rgba(15, 23, 42, 0.1);
+  --line-strong: rgba(15, 23, 42, 0.24);
+  --text: #0d1526;
+  --muted: #576784;
+  --shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+  --glow: 0 0 22px rgba(124, 92, 255, 0.25);
+}
+
+/* ---------- panel themes (Panel Theme setting drives [data-theme]) ---------- */
+body[data-theme="danger"] { --net: #ff5d6d; --ice: #ff2e88; --grad: linear-gradient(135deg, #ff5d6d 0%, #ff2e88 100%); --glow: 0 0 24px rgba(255, 93, 109, 0.35); }
+body[data-theme="primary"] { --net: #9d4edd; --ice: #00e0c6; --grad: linear-gradient(135deg, #9d4edd 0%, #00e0c6 100%); --glow: 0 0 24px rgba(157, 78, 221, 0.35); }
+body[data-theme="warning"] { --net: #ff9a3d; --ice: #ffc53d; --grad: linear-gradient(135deg, #ff9a3d 0%, #ffc53d 100%); --glow: 0 0 24px rgba(255, 154, 61, 0.35); }
+body[data-theme="success"] { --net: #22e584; --ice: #00b8a9; --grad: linear-gradient(135deg, #22e584 0%, #00b8a9 100%); --glow: 0 0 24px rgba(34, 229, 132, 0.35); }
+body[data-theme="info"] { --net: #4cc3ff; --ice: #2f80ed; --grad: linear-gradient(135deg, #4cc3ff 0%, #2f80ed 100%); --glow: 0 0 24px rgba(76, 195, 255, 0.35); }
+html { -webkit-tap-highlight-color: rgba(124, 92, 255, 0.25); }
+body {
+  font-family: var(--font-body);
+  background: var(--ink);
+  color: var(--text);
+  overflow-x: hidden;
+  touch-action: manipulation;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 420px at 8% -60px, rgba(124, 92, 255, 0.22), transparent 65%),
+    radial-gradient(700px 460px at 95% 10%, rgba(0, 224, 198, 0.13), transparent 65%),
+    radial-gradient(900px 600px at 50% 115%, rgba(255, 92, 168, 0.09), transparent 65%);
+}
+body.vmp-light::before {
+  background:
+    radial-gradient(700px 420px at 8% -60px, rgba(124, 92, 255, 0.13), transparent 65%),
+    radial-gradient(700px 460px at 95% 10%, rgba(0, 224, 198, 0.11), transparent 65%);
+}
+.wrapper, .main-panel, .content { position: relative; }
+/* NOTE: no z-index here on purpose. A z-index on .wrapper/.main-panel
+   traps Bootstrap's body-level .modal-backdrop ABOVE #userConfirmationModal
+   (and the mobile drawer under its scrim), making both unclickable.
+   Content still paints above body::before by DOM order. */
+.main-panel, .content { background: transparent !important; }
+
+h1, h2, h3, .card-title, .navbar-brand, .sidebar .logo .simple-text {
+  font-family: var(--font-display);
+  text-wrap: balance;
+}
+::selection { background: rgba(124, 92, 255, 0.45); color: #fff; }
+:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+
+/* ---------- utilities ---------- */
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted);
+}
+.mono { font-family: var(--font-mono); }
+.tnum { font-variant-numeric: tabular-nums; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skip-link {
+  position: fixed; top: -60px; left: 12px; z-index: 2000;
+  background: var(--net); color: #fff; padding: 10px 18px; border-radius: 10px;
+  font-weight: 700; transition: top var(--t-fast) var(--ease);
+}
+.skip-link:focus { top: 12px; }
+code { font-family: var(--font-mono); background: var(--surface-2); padding: 2px 7px; border-radius: 7px; }
+body.vmp-light code { background: #e8edf6; }
+a { transition: color var(--t-fast) var(--ease); }
+hr { border-color: var(--line); }
+img { max-width: 100%; }
+
+/* ---------- light mode: beat legacy .dark-edition specificity ---------- */
+body.vmp-light.dark-edition { background-color: var(--ink); }
+body.vmp-light.dark-edition .card { color: #0d1526; }
+body.vmp-light.dark-edition .card .card-body { color: #0d1526; }
+body.vmp-light.dark-edition .card .card-body .card-category,
+body.vmp-light.dark-edition .card .card-header .card-category { color: #576784; }
+body.vmp-light.dark-edition .card .card-title,
+body.vmp-light.dark-edition .card .card-body .card-title,
+body.vmp-light.dark-edition .card .card-body .card-category + .card-title { color: #0d1526; }
+body.vmp-light.dark-edition .card .vmp-stat-num { color: #0d1526; }
+body.vmp-light.dark-edition .card a:not(.btn):not(.nav-link):not(.dropdown-item):not(.vmp-badge) { color: #6d28d9; }
+body.vmp-light.dark-edition .card .card-footer .stats,
+body.vmp-light.dark-edition .card .card-body .card-description { color: #576784; }
+body.vmp-light.dark-edition .navbar .navbar-brand { color: #0d1526; }

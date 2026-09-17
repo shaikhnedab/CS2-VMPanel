@@ -1,0 +1,195 @@
+<%
+
+function EpocToDate(utcSeconds) {
+  let d = new Date(0);
+  d.setUTCSeconds(utcSeconds)
+  let dd = d.getDate();
+  let mm = d.getMonth() + 1;
+  let yyyy = d.getFullYear();
+  return dd + '-' + mm + '-' + yyyy;
+}
+
+function dateFormatter(date) {
+  let d = new Date(date);
+  let dd = d.getDate();
+  let mm = d.getMonth() + 1;
+  let yyyy = d.getFullYear();
+  return dd + '-' + mm + '-' + yyyy;
+}
+
+function remainingDays(endEpoc){
+  const date1 = new Date();
+  const date2 = new Date(0);
+  date2.setUTCSeconds(endEpoc)
+  const diffTime = Math.abs(date2 - date1);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays
+}
+
+function expiryBadge(days){
+  days = days/1;
+  if (days < 5) return '<span class="vmp-badge bad"><span class="vmp-dot pulse"></span>' + days + 'd left</span>';
+  if (days < 10) return '<span class="vmp-badge warn"><span class="vmp-dot"></span>' + days + 'd left</span>';
+  return '<span class="vmp-badge ok"><span class="vmp-dot"></span>' + days + 'd left</span>';
+}
+
+%>
+
+<%- include('Header.ejs') %>
+
+<div class="content">
+  <div class="container-fluid">
+
+    <%if(typeof myVipCount !== 'undefined' && myVipCount === 0 && sessionSteamId && !sessionToken){%>
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div class="vmp-stat-icon amber"><i class="material-icons" aria-hidden="true">stars</i></div>
+            <div style="flex:1;min-width:220px">
+              <p class="eyebrow">No active VIP</p>
+              <h4 class="card-title" style="margin:0">You don't hold VIP on any server yet</h4>
+              <p class="card-category" style="margin:4px 0 0">Grab VIP to unlock reserved slots, perks, and supporter status across the community.</p>
+            </div>
+            <a href="/mydashboard" class="btn btn-success">Browse the VIP store</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <%}%>
+
+    <%if(sessionToken){%>
+    <p class="eyebrow" style="margin:4px 2px 12px">Operations overview</p>
+    <div class="row">
+      <div class="col-xl-3 col-lg-6 col-md-6 col-sm-6">
+        <div class="card vmp-stat">
+          <div class="card-body" style="display:flex;gap:16px;align-items:center">
+            <div class="vmp-stat-icon"><i class="material-icons">dns</i></div>
+            <div>
+              <div class="vmp-stat-label">Total Servers</div>
+              <div class="vmp-stat-num" data-count="<%= adminStats.serverCount || 0 %>"><%= adminStats.serverCount || 'NA' %></div>
+              <a href="/panelsetting#listserver" style="font-size:12px">Manage servers →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-3 col-lg-6 col-md-6 col-sm-6">
+        <div class="card vmp-stat">
+          <div class="card-body" style="display:flex;gap:16px;align-items:center">
+            <div class="vmp-stat-icon green"><i class="material-icons">group</i></div>
+            <div>
+              <div class="vmp-stat-label">Active Users</div>
+              <div class="vmp-stat-num" data-count="<%= adminStats.userCount || 0 %>"><%= adminStats.userCount || 'NA' %></div>
+              <a href="/managevip" style="font-size:12px">Manage VIPs →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-3 col-lg-6 col-md-6 col-sm-6">
+        <div class="card vmp-stat">
+          <div class="card-body" style="display:flex;gap:16px;align-items:center">
+            <div class="vmp-stat-icon amber"><i class="material-icons">shopping_bag</i></div>
+            <div>
+              <div class="vmp-stat-label">VIP Purchases</div>
+              <div class="vmp-stat-num" data-count="<%= adminStats.saleCount || 0 %>"><%= adminStats.saleCount || 'NA' %></div>
+              <a href="/salesrecord" style="font-size:12px">View sales →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-3 col-lg-6 col-md-6 col-sm-6">
+        <div class="card vmp-stat">
+          <div class="card-body" style="display:flex;gap:16px;align-items:center">
+            <div class="vmp-stat-icon blue"><i class="material-icons">autorenew</i></div>
+            <div>
+              <div class="vmp-stat-label">VIP Renewals</div>
+              <div class="vmp-stat-num" data-count="<%= adminStats.renewSaleCount || 0 %>"><%= adminStats.renewSaleCount || 'NA' %></div>
+              <a href="/salesrecord" style="font-size:12px">View sales →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <%}%>
+
+    <div class="row">
+      <div class="col-12">
+        <p class="eyebrow" style="margin:8px 2px 12px">Servers</p>
+      </div>
+      <% if(serverData) {%>
+    <% for(let i=0; i < serverData.length; i++) { %>
+    <div class="col-xl-3 col-lg-6 col-md-6 col-sm-6">
+      <div class="card vmp-stat">
+        <div class="card-body">
+          <div style="display:flex;gap:14px;align-items:center;margin-bottom:12px">
+            <div class="vmp-stat-icon pink"><i class="material-icons">sports_esports</i></div>
+            <div style="min-width:0">
+              <div class="vmp-stat-label"><%= panelSetting.community_name || 'Community' %></div>
+              <h4 class="card-title" style="margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><%= serverData[i].server_name || 'NA' %></h4>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <span class="vmp-badge violet"><%= serverData[i].vip_price ? serverData[i].vip_price + ' ' + serverData[i].vip_currency : 'NA' %></span>
+            <span class="vmp-badge info"><%= serverData[i].vip_days ? serverData[i].vip_days + ' days' : '' %></span>
+          </div>
+          <a class="btn btn-success btn-block" href="<%='steam://connect/'+serverData[i].server_ip+':'+serverData[i].server_port%>">
+            <i class="material-icons" style="vertical-align:-6px;font-size:18px">play_circle</i> Connect &amp; Play
+          </a>
+        </div>
+      </div>
+    </div>
+    <%}}%>
+  </div>
+
+  <div class="row">
+    <div class="col-12">
+      <p class="eyebrow" style="margin:8px 2px 12px">Members by server</p>
+    </div>
+    <% if(vipData) {%>
+    <% for(let i=0; i < vipData.length; i++) { %>
+    <% if( ((vipData[i].type==="VIPs" && panelSetting.dash_vip_show==1 && !sessionToken ) ||(vipData[i].type==="VIPs" && sessionToken)  ) || (vipData[i].type==="ADMINs" && panelSetting.dash_admin_show==1)) {%>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;gap:12px">
+          <div class="vmp-stat-icon <%= vipData[i].type==='VIPs'?'amber':'blue' %>" style="width:42px;height:42px"><i class="material-icons"><%= vipData[i].type==='VIPs'?'stars':'verified_user' %></i></div>
+          <div>
+            <h4 class="card-title" style="margin:0"><%= vipData[i].servername.toUpperCase() + ' · ' + vipData[i].type %></h4>
+            <p class="card-category" style="margin:0"><%= vipData[i].data.length %> members</p>
+          </div>
+        </div>
+        <div class="card-body vmp-scroller" style="max-height:400px;overflow:auto;padding:0 6px 6px">
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Steam ID</th>
+                  <th>Name</th>
+                  <th>Started</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if(vipData[i].data) {%>
+                <% for(let j=0; j < vipData[i].data.length; j++) { %>
+                <tr>
+                  <td><code><%= vipData[i].data[j].authId ? ((vipData[i].data[j].authId).replace('"','').replace('"','')) : 'NA' %></code></td>
+                  <td><%= vipData[i].data[j].name ? vipData[i].data[j].name.replace("//","") : 'NA' %></td>
+                  <td><%= vipData[i].data[j].created_at ? dateFormatter(vipData[i].data[j].created_at) : 'NA' %></td>
+                  <td><%= vipData[i].data[j].expireStamp ? EpocToDate(vipData[i].data[j].expireStamp) : '—' %></td>
+                  <td><%- vipData[i].data[j].expireStamp ? expiryBadge(remainingDays(vipData[i].data[j].expireStamp)) : '<span class="vmp-badge info">Permanent</span>' %></td>
+                </tr>
+                <%}}%>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <%}}}%>
+  </div>
+</div>
+</div>
+
+
+<%- include('Footer.ejs') %>

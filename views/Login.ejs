@@ -1,0 +1,101 @@
+<%- include('Header.ejs') %>
+
+<div class="content">
+  <div class="container-fluid">
+    <div class="vmp-auth-wrap">
+      <div class="row justify-content-center w-100" style="max-width:1020px">
+        <div class="col-lg-5 col-md-12 mb-4">
+          <div class="vmp-auth-hero h-100">
+            <span class="vmp-badge violet" style="margin-bottom:14px"><span class="vmp-dot pulse"></span>GAME SERVER PANEL</span>
+            <h2>Welcome to<br><span class="grad-text"><%= panelSetting.community_name || 'VMPanel' %></span></h2>
+            <p style="color:var(--vmp-muted);margin-top:12px">Manage VIPs, admins and servers from one fast, modern dashboard. Players sign in with Steam to buy, renew or gift VIP.</p>
+            <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
+              <span class="vmp-badge ok"><span class="vmp-dot"></span>Secure checkout</span>
+              <span class="vmp-badge info"><span class="vmp-dot"></span>Instant sync</span>
+              <span class="vmp-badge warn"><span class="vmp-dot"></span>Discord alerts</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7 col-md-12">
+          <div class="row">
+            <%if(steamLogin){%>
+            <div class="col-md-12 mb-4">
+              <div class="card">
+                <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                  <div class="vmp-stat-icon blue"><i class="material-icons">sports_esports</i></div>
+                  <div style="flex:1;min-width:200px">
+                    <h4 class="card-title" style="margin:0">Players — sign in with Steam</h4>
+                    <p class="card-category" style="margin:4px 0 0">Check your VIP status, buy, renew or gift VIP.</p>
+                  </div>
+                  <button type="button" class="vmp-steam-btn" onClick='callSteamLogin()'>
+                    <i class="fa fa-steam" aria-hidden="true"></i> Sign in via Steam
+                  </button>
+                </div>
+              </div>
+            </div>
+            <%} else if(sessionToken){%>
+            <div class="col-md-12 mb-4">
+              <div class="card">
+                <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+                  <div class="vmp-stat-icon amber"><i class="material-icons">key_off</i></div>
+                  <div style="flex:1;min-width:200px">
+                    <h4 class="card-title" style="margin:0">Steam login is disabled</h4>
+                    <p class="card-category" style="margin:4px 0 0">Players can't sign in until a Steam API key is set. Get one at <code>steamcommunity.com/dev</code> and set <code>STEAM_API_KEY</code>, then restart the panel.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <%}%>
+            <%if((panelSetting.hiddenadmin_login/1 == 0) || (panelSetting.hiddenadmin_login/1==1 && adminRoute==true)){%>
+            <div class="col-md-12">
+              <div class="card vmp-auth-card" style="margin:0 auto">
+                <div class="card-body" style="padding:28px">
+                  <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+                    <div class="vmp-stat-icon"><i class="material-icons">verified_user</i></div>
+                    <div>
+                      <h4 class="card-title" style="margin:0">Admin login</h4>
+                      <p class="card-category" style="margin:2px 0 0">Restricted area — all logins are audited.</p>
+                    </div>
+                  </div>
+                  <form method="post" action="/adminlogin" id="vmpAdminLoginForm">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>">
+                    <div class="form-group">
+                      <label for="vmpUsername">Username</label>
+                      <input type="text" id="vmpUsername" name="username" class="form-control" placeholder="admin" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                      <label for="vmpPassword">Password</label>
+                      <input type="password" id="vmpPassword" name="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block" id="vmpAdminLoginBtn" style="margin-top:8px">Log in to panel</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+            <%}%>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('Footer.ejs') %>
+
+      <script>
+        let errorMsg = <%- JSON.stringify(error || null) %>;
+
+        $(document).ready(function () {
+          if (errorMsg) {
+            vmpToast(String(errorMsg).slice(0, 300), 'warning');
+          }
+          $('#vmpAdminLoginForm').on('submit', function () {
+            vmpLoading(document.getElementById('vmpAdminLoginBtn'), true, 'Signing in…');
+          });
+        });
+
+        function callSteamLogin() {
+          vmpToast('Redirecting to Steam…', 'success');
+          setTimeout(function () { window.location = '/auth/steam'; }, 350);
+        }
+      </script>

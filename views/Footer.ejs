@@ -1,0 +1,67 @@
+<footer class="footer">
+  <div class="container-fluid d-flex justify-content-between align-items-center flex-wrap">
+    <nav class="footer-panel-info" aria-label="Project links">
+      <a href="https://github.com/shaikhnedab/CS2-VMPanel" target="_blank" rel="noopener noreferrer">
+        <span class="vmp-badge violet"><span class="vmp-dot pulse" aria-hidden="true"></span><span translate="no">VMP · Nova</span>&nbsp;v2.1</span>
+      </a>
+    </nav>
+    <div class="copyright" id="date">
+      CS2-VMPanel · community edition
+    </div>
+  </div>
+</footer>
+
+<!--Confirm Modal -->
+<div class="modal fade" id="userConfirmationModal" tabindex="-1" role="dialog"
+  aria-labelledby="userConfirmationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content vmp-modal-card">
+      <div class="modal-header">
+        <h5 class="modal-title" id="userConfirmationModalLabel">Are you sure?</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close dialog" style="color:var(--text)">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body" id="userConfirmationModal-body">
+      </div>
+      <p class="vmp-hint" id="userConfirmationModal-hint" style="display:none;padding:0 20px"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default cancel" id="userConfirmationModal-no" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger ok" id="userConfirmationModal-yes">Yes, do it</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!--Confirm Modal -->
+
+<!-- command palette -->
+<div id="vmpPaletteScrim" onclick="vmpTogglePalette(false)"></div>
+<div id="vmpPalette" role="dialog" aria-modal="true" aria-labelledby="vmpPaletteLabel" style="display:none">
+  <span id="vmpPaletteLabel" class="sr-only">Command palette</span>
+  <input id="vmpPaletteInput" type="text" placeholder="Type a command or search pages…" autocomplete="off" spellcheck="false" aria-label="Search commands and pages" role="combobox" aria-expanded="true" aria-controls="vmpPaletteList" aria-autocomplete="list">
+  <div id="vmpPaletteList" role="listbox" aria-label="Commands"></div>
+  <div class="vmp-pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>
+</div>
+<!-- command palette -->
+
+<!-- aria-live toast region -->
+<div id="vmpLiveRegion" class="sr-only" aria-live="polite"></div>
+
+<!-- loader -->
+<div id="divForLoader" aria-live="polite"></div>
+<!-- loader -->
+
+</div>
+</div>
+</body>
+
+</html>
+
+<script src="./js/vmp-ui.js?v=4"></script>
+<script>
+  $(document).ready(function () {
+    const x = new Date().getFullYear();
+    let date = document.getElementById('date');
+    date.innerHTML = '&copy; ' + x + ' ' + date.innerHTML;
+  });
+</script>

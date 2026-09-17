@@ -1,0 +1,320 @@
+<%
+
+function EpocToDate(utcSeconds) {
+  let d = new Date(0);
+  d.setUTCSeconds(utcSeconds)
+  let dd = d.getDate();
+  let mm = d.getMonth() + 1;
+  let yyyy = d.getFullYear();
+  return dd + '-' + mm + '-' + yyyy;
+}
+
+function dateFormatter(date) {
+  let d = new Date(date);
+  let dd = d.getDate();
+  let mm = d.getMonth() + 1;
+  let yyyy = d.getFullYear();
+  return dd + '-' + mm + '-' + yyyy;
+}
+
+function remainingDays(endEpoc){
+  const date1 = new Date();
+  const date2 = new Date(0);
+  date2.setUTCSeconds(endEpoc)
+  const diffTime = Math.abs(date2 - date1);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays
+}
+
+function expiryBadge(days){
+  days = days/1;
+  if (days < 5) return '<span class="vmp-badge bad"><span class="vmp-dot pulse"></span>' + days + ' days left</span>';
+  if (days < 10) return '<span class="vmp-badge warn"><span class="vmp-dot"></span>' + days + ' days left</span>';
+  return '<span class="vmp-badge ok"><span class="vmp-dot"></span>' + days + ' days left</span>';
+}
+
+function slotId(prefix, tblOrName, i) {
+  return ((tblOrName ? String(tblOrName).replace(/[^A-Za-z0-9_]/g, '') : '') || ('slot' + i)) + prefix;
+}
+
+%>
+
+<!-- crypto script needed for payu (sometimes it gives error loading this script from sdk so adding it manually) -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+
+<!-- Paypal SDK Settings start -->
+<script>
+  var paypalActive = <%=paypalActive%>;
+</script>
+<%if(paypalActive){%>
+<script
+  src="https://www.paypal.com/sdk/js?client-id=<%=paypalClientID%>&disable-funding=card&currency=<%=panelSetting.platform_currency%>"></script>
+<%}%>
+<script src="./js/paypalPayment.js"></script>
+<!-- Paypal SDK Settings end -->
+
+<!-- PayU SDK Settings start -->
+<script>
+  var payuActive = <%=payuActive%>;
+</script>
+
+<%if(payuActive && panelSetting.platform_currency==="INR"){%>
+<%if(payuEnv=='test'){%>
+<!-- BOLT Sandbox/test //-->
+<script id="bolt" src="https://sboxcheckout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="913f9e"
+  bolt-logo="<%= panelSetting.community_logo_url?panelSetting.community_logo_url:'./images/vmp.png'%>"></script>
+<%}else if(payuEnv=='live')%>
+<!-- BOLT Sandbox/test //-->
+<script id="bolt" src="https://checkout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="288c6c"
+  bolt-logo="<%= panelSetting.community_logo_url?panelSetting.community_logo_url:'./images/vmp.png'%>"></script>
+<%}%>
+<!-- PayU SDK Settings end -->
+
+<!-- RazorPay Checkout Script -->
+<script>
+  var razorpayActive = <%=razorpayActive%>
+</script>
+<%if(razorpayActive && panelSetting.platform_currency === "INR"){%>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<%}%>
+
+<script>
+   var colSpan = <%=colSpan%>
+</script>
+
+<%- include('Header.ejs') %>
+
+<div class="content">
+  <div class="container-fluid">
+    <%if(!userDataListing || !userDataListing.length){%>
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div class="vmp-stat-icon green"><i class="material-icons" aria-hidden="true">shopping_bag</i></div>
+            <div style="flex:1;min-width:220px">
+              <p class="eyebrow">Get started</p>
+              <h4 class="card-title" style="margin:0">You don't hold VIP anywhere yet</h4>
+              <p class="card-category" style="margin:4px 0 0">Pick a server or bundle below to buy your first VIP — or gift one to a friend.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <%}%>
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-8">
+                <p class="eyebrow">Gifting</p>
+                <h4 class="card-title">Gift VIP to a friend</h4>
+                <p class="card-category">Turn on gifting, paste the receiver's Steam profile link, verify it, then check out on any server or bundle. The VIP goes to them, not you.</p>
+              </div>
+              <div class="col-md-4">
+                <label class="vmp-switch">
+                  <input type="checkbox" id="vmpGiftToggle" onchange="vmpToggleGiftUI()">
+                  <span class="vmp-track" aria-hidden="true"></span>
+                  <span><strong>Gift this purchase</strong><br><small class="text-muted">VIP goes to a verified Steam profile</small></span>
+                </label>
+                <div id="vmpGiftRecipientWrap" style="display:none;margin-top:10px">
+                  <label for="vmpGiftRecipient" class="vmp-field-label" style="margin-top:0">Receiver's Steam profile link or ID</label>
+                  <div class="vmp-fetch-form" style="margin-top:0">
+                    <div class="form-group bmd-form-group">
+                      <input type="text" id="vmpGiftRecipient" name="gift_recipient" class="form-control mono" placeholder="https://steamcommunity.com/id/… or STEAM_1:……" autocomplete="off" spellcheck="false" oninput="vmpGiftInputChanged()">
+                    </div>
+                    <button type="button" class="btn btn-info" id="vmpGiftVerifyBtn" onclick="vmpVerifyGiftRecipient()">Verify receiver</button>
+                  </div>
+                  <small class="text-muted">Accepts profile links, STEAM_1:X:Y, SteamID64, and [U:1:N]. Gifts cannot renew, and the receiver must not already hold VIP there.</small>
+                  <div id="vmpGiftReceiverPreview" style="display:none;margin-top:12px" aria-live="polite"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <!-- server and bundle card start -->
+      <div class="col-md-12">
+      <div class="card">
+        <div class="card-header">
+          <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item">
+              <a class="nav-link active" id="serverVip-tab" data-toggle="tab" href="#serverVip" role="tab"
+                aria-controls="serverVip" aria-selected="true"><i class="material-icons" aria-hidden="true">dns</i> Servers</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" id="serverBundles-tab" data-toggle="tab" href="#serverBundles" role="tab"
+                aria-controls="serverBundles" aria-selected="false"><i class="material-icons" aria-hidden="true">local_offer</i>
+                Bundles &amp; offers</a>
+            </li>
+          </ul>
+        </div>
+        <div class="card-body">
+          <div class="tab-content">
+            <div class="tab-pane active" id="serverVip" role="tabpanel" aria-labelledby="serverVip-tab" tabindex="0">
+              <%if(serverArray && serverArray.length){%>
+              <div class="row">
+                <% for(let i=0; i < serverArray.length;i++){%>
+                <div class="col-xl-3 col-lg-6 col-md-6 col-sm-12">
+                  <div class="card vmp-product">
+                    <div class="card-body">
+                      <p class="eyebrow">VIP · <%=serverArray[i].vip_days%> days</p>
+                      <h4 class="card-title truncate" title="<%=serverArray[i].server_name%>"><%=serverArray[i].server_name || 'Unnamed server'%></h4>
+                      <div class="vmp-price tnum"><%=serverArray[i].vip_price ? serverArray[i].vip_price + ' ' + serverArray[i].vip_currency : 'Price on request'%></div>
+                      <div class="vmp-perks">
+                        <%if(serverArray[i].server_ip && serverArray[i].server_port){%>
+                        <a class="vmp-badge ok" href="<%='steam://connect/'+serverArray[i].server_ip+':'+serverArray[i].server_port%>"><span class="vmp-dot pulse" aria-hidden="true"></span>Join server</a>
+                        <%}%>
+                      </div>
+                    </div>
+                    <div class="card-footer">
+                      <div class="vmp-paypal-slot" id="<%= slotId('buy', serverArray[i].tbl_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase"></div>
+                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase" aria-label="Buy with PayU">
+                        <img src="./images/payumoney.png" height="20" width="76" alt="PayU">
+                      </button>
+                      <%}%>
+                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase" aria-label="Buy with Razorpay">
+                        <img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay">
+                      </button>
+                      <%}%>
+                    </div>
+                  </div>
+                </div>
+                <%}%>
+              </div>
+              <%}else{%>
+              <div class="vmp-empty">
+                <i class="material-icons" aria-hidden="true">dns</i>
+                <h5>No servers on sale right now</h5>
+                <div>Every VIP slot is taken or no servers are listed. Check back soon.</div>
+              </div>
+              <%}%>
+            </div>
+            <div class="tab-pane" id="serverBundles" role="tabpanel" aria-labelledby="serverBundles-tab" tabindex="0">
+              <div class="row" id="userDashoardServerBundleListing">
+                <%if(bundleArray){%>
+                <% for(let i=0; i < bundleArray.length;i++){%>
+                <div class="col-xl-4 col-lg-6 col-md-6 col-sm-12">
+                  <div class="card vmp-product">
+                    <div class="card-body">
+                      <p class="eyebrow">Bundle · <%=bundleArray[i].bundle_sub_days%> days each</p>
+                      <h4 class="card-title truncate" title="<%=bundleArray[i].bundle_name%>"><%=bundleArray[i].bundle_name || 'Bundle'%></h4>
+                      <div class="vmp-price tnum"><%=bundleArray[i].bundle_price ? bundleArray[i].bundle_price + ' ' + bundleArray[i].bundle_currency : 'Price on request'%></div>
+                      <div class="vmp-perks">
+                        <%if(bundleArray[i].bundleServersData){%>
+                        <% for(let j=0; j < bundleArray[i].bundleServersData.length;j++){%>
+                        <a class="vmp-badge violet" href="<%='steam://connect/'+bundleArray[i].bundleServersData[j].server_ip+':'+bundleArray[i].bundleServersData[j].server_port%>"><%= bundleArray[i].bundleServersData[j].server_name %></a>
+                        <%}%>
+                        <%}%>
+                      </div>
+                    </div>
+                    <div class="card-footer">
+                      <div class="vmp-paypal-slot" id="<%= slotId('bundlebuy', bundleArray[i].bundle_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle"></div>
+                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle" aria-label="Buy bundle with PayU">
+                        <img src="./images/payumoney.png" height="20" width="76" alt="PayU">
+                      </button>
+                      <%}%>
+                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle" aria-label="Buy bundle with Razorpay">
+                        <img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay">
+                      </button>
+                      <%}%>
+                    </div>
+                  </div>
+                </div>
+                <%}%>
+                <%}%>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <!-- server and bundle card end -->
+
+    <!-- user detail card start -->
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;gap:14px">
+            <%if(userData && userData.avatarUrl){%>
+            <img src="<%= userData.avatarUrl %>" height="52" width="52" alt="Your Steam avatar" style="border-radius:14px" loading="lazy">
+            <%}else{%>
+            <div class="vmp-stat-icon blue"><i class="material-icons" aria-hidden="true">person</i></div>
+            <%}%>
+            <div>
+              <p class="eyebrow">Your memberships</p>
+              <h4 class="card-title" style="margin:0"><%=((sessionSteamId&&steamName)?steamName:'You')%> · <%=userDataListing.length%> server<%=userDataListing.length===1?'':'s'%></h4>
+            </div>
+          </div>
+          <div class="card-body" style="padding:0 6px 6px">
+            <div class="table-responsive vmp-scroller" style="max-height:440px;overflow:auto">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th scope="col">Server</th>
+                    <th scope="col">Steam ID</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Started</th>
+                    <th scope="col">Expires</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Renew</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if(userDataListing) {%>
+                  <% for(let j=0; j < userDataListing.length; j++) { %>
+                  <% const row = userDataListing[j].data || {}; const srv = userDataListing[j].serverdata || null; const sid = row.authId ? row.authId.replace(/"/g, '') : ''; %>
+                  <tr>
+                    <td class="truncate" style="max-width:180px" title="<%=userDataListing[j].servername%>"><%=userDataListing[j].servername || 'NA'%></td>
+                    <td><code translate="no"><%=sid || 'NA'%></code> <%if(sid){%><button type="button" class="btn btn-default btn-fab" style="width:30px;height:30px;min-width:30px" data-copy="<%=sid%>" aria-label="Copy Steam ID"><i class="material-icons" aria-hidden="true" style="font-size:15px">content_copy</i></button><%}%></td>
+                    <td><%- row.type===0 ? '<span class="vmp-badge violet">VIP</span>' : row.type===1 ? '<span class="vmp-badge info">Admin</span>' : '<span class="vmp-badge">NA</span>' %></td>
+                    <td class="mono tnum"><%=row.created_at ? dateFormatter(row.created_at) : 'NA'%></td>
+                    <td class="mono tnum"><%=row.expireStamp ? EpocToDate(row.expireStamp) : '—'%></td>
+                    <td><%- row.expireStamp ? expiryBadge(remainingDays(row.expireStamp)) : (row.type===1 ? '<span class="vmp-badge info">Permanent</span>' : '<span class="vmp-badge">NA</span>') %></td>
+                    <td>
+                      <% if(row.type==0 && srv){ %>
+                      <div class="vmp-paypal-slot" id="<%= slotId('renew', srv.tbl_name, j) %>" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase"></div>
+                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase" aria-label="Renew with PayU">
+                        <img src="./images/payumoney.png" height="18" width="68" alt="PayU">
+                      </button>
+                      <%}%>
+                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase" aria-label="Renew with Razorpay">
+                        <img src="./images/razorpay.svg" height="18" width="68" alt="Razorpay">
+                      </button>
+                      <%}%>
+                      <%}else{%>
+                      <span class="vmp-badge">No renewal needed</span>
+                      <%}%>
+                    </td>
+                  </tr>
+                  <%}}%>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<%- include('Footer.ejs') %>
+
+<script src="./js/notifications.js"></script>
+<script src="./js/myDashboard.js"></script>
+<script src="./js/customConfirm.js"></script>
+<script src="./js/paymentForm.js"></script>
+<script src="./js/payU.js"></script>
+<script src="./js/razorPay.js"></script>

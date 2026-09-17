@@ -1,0 +1,105 @@
+/* VMP-by-Summer-Soldier
+*
+* Copyright (C) 2021 SUMMER SOLDIER - (SHIVAM PARASHAR)
+*
+* This file is part of VMP-by-Summer-Soldier
+*
+* VMP-by-Summer-Soldier is free software: you can redistribute it and/or modify it
+* under the terms of the GNU General Public License as published by the Free
+* Software Foundation, either version 3 of the License, or (at your option)
+* any later version.
+*
+* VMP-by-Summer-Soldier is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along with
+* VMP-by-Summer-Soldier. If not, see http://www.gnu.org/licenses/.
+*/
+
+'use strict';
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const config = require('../config');
+const logger = require('../modules/logger')('Login Controller');
+const User = require('../modules/user');
+
+const jwtSecretKey = config.jwt.key;
+const steamApi = config.steam_api_key;
+
+exports.loginPage = async (req, res) => {
+  const isAdminRoute = (req.route.path === "/adminlogin") || (req.headers.referer && req.headers.referer.indexOf("/adminlogin") != -1);
+  try {
+    if (req.session.token || req.session.passport) return res.redirect('/');
+    res.render('Login', {
+      "steamLogin": (steamApi ? true : false),
+      "adminRoute": isAdminRoute,
+      "error": null
+    });
+  } catch (error) {
+    logger.error("error in login-->", error);
+    res.render('Login', {
+      "steamLogin": (steamApi ? true : false),
+      "adminRoute": isAdminRoute,
+      "error": "Something went wrong contact Admin for more Info"
+    });
+  }
+}
+
+exports.authUserLogin = async (req, res) => {
+  const referer = (req.headers && req.headers.referer) || '';
+  const isAdminRoute = referer.indexOf("/adminlogin") != -1;
+  try {
+    let username = req.body.username;
+    let password = req.body.password;
+    // For the given username fetch user from DB
+    const user = new User({
+      username
+    });
+    const userData = await user.userInfo();
+    if (!(username && password)) {
+      return res.render('Login', {
+        "steamLogin": (steamApi ? true : false),
+        "adminRoute": isAdminRoute,
+        "error": 'Authentication failed! Please check the request'
+      });
+    }
+const bcryptCompare = (candidate, hash) => new Promise((resolve) => {
+      bcrypt.compare(candidate, hash, (err, ok) => resolve(!err && ok === true));
+    });
+    const passwordOk = await bcryptCompare(password, userData.password);
+    if (!passwordOk) return res.render('Login', {
+      "steamLogin": (steamApi ? true : false),
+      "adminRoute": isAdminRoute,
+      "error": 'Incorrect Username or Password'
+    });
+
+      const token = jwt.sign({ username: username },
+        jwtSecretKey,
+        {
+          algorithm: 'HS256',
+          issuer: 'cs2-vmpanel',
+          expiresIn: '7d' // expires in 7 day
+        }
+      );
+      // return the JWT token for the future API calls
+      req.session.token = token;
+      req.session.username = userData.username;
+      req.session.sec_key = userData.sec_key;
+      req.session.user_type = userData.user_type;
+
+      // Warn if the operator is still on the shipped default credential
+      // (admin/password) so it gets rotated before going live.
+      const isDefault = userData.username === 'admin' ? await bcryptCompare('password', userData.password) : false;
+      req.session.defaultCredWarning = isDefault;
+
+      return res.redirect('/managevip');
+  } catch (error) {
+    logger.error("error in authUserLogin-->", error);
+    res.render('Login', {
+      "steamLogin": (steamApi ? true : false),
+      "adminRoute": isAdminRoute,
+      "error": "Something went wrong contact Admin for more Info"
+    })
+  }
+}

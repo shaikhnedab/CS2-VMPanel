@@ -1,0 +1,48 @@
+{
+  "name": "cs2-vmpanel",
+  "version": "2.0.0",
+  "description": "CS2-VMPanel — modern VIP/admin management panel for community game servers",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node tests/smoke.js",
+    "start": "node server.js",
+    "migrate": "node app/db/migrate.js"
+  },
+  "keywords": [
+    "nodejs",
+    "express",
+    "mysql",
+    "cs2",
+    "vip",
+    "game-server"
+  ],
+  "author": "shaikhnedab",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "big-integer": "^1.6.48",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "ejs": "^3.1.6",
+    "express": "^4.22.2",
+    "express-rate-limit": "^7.5.1",
+    "express-session": "^1.17.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "log4js": "^6.9.1",
+    "mysql2": "^3.24.4",
+    "needle": "^2.8.0",
+    "node-cron": "^4.6.0",
+    "passport": "^0.6.0",
+    "passport-steam": "^1.0.15",
+    "razorpay": "^2.8.6",
+    "rcon": "^1.0.3",
+    "sourcequery": "0.0.2"
+  },
+  "devDependencies": {
+    "eslint": "^7.15.0"
+  }
+}
