@@ -19,7 +19,7 @@
 
 'use strict';
 
-const pool = require('./connection');
+const { getPool } = require('./connection');
 const mysql = require('mysql2');
 
 /**
@@ -29,7 +29,7 @@ const mysql = require('mysql2');
  * @param {boolean} singleRecord - single record
  */
 const query = async function (queryText, singleRecord) {
-    const [results] = await pool.query(queryText);
+    const [results] = await getPool().query(queryText);
     return normalize(results, singleRecord);
 };
 
@@ -50,7 +50,7 @@ function normalize(results, singleRecord) {
  * signature as db.query, so models stay unchanged.
  */
 const withTransaction = async function (fn) {
-    const conn = await pool.getConnection();
+    const conn = await getPool().getConnection();
     try {
         await conn.beginTransaction();
         const exec = async (queryText, singleRecord) => {
@@ -78,11 +78,34 @@ var queryFormat = mysql.format;
  */
 var dataEscape = mysql.escape;
 
+// Stable proxy so destructured `const { dbPool } = require('./db_bridge')`
+// keeps working while pool creation stays lazy.
+const dbPoolProxy = new Proxy({}, {
+  get(_target, prop) {
+    if (prop === '__esModule') return false;
+    const pool = getPool();
+    const value = pool[prop];
+    if (typeof value === 'function') return value.bind(pool);
+    return value;
+  },
+  has(_target, prop) {
+    try {
+      const pool = getPool();
+      return prop in pool;
+    } catch (e) { return false; }
+  },
+});
+
 module.exports = {
-    dbPool: pool,
     query,
     queryFormat,
     dataEscape,
     withTransaction,
-    normalize
+    normalize,
 };
+
+Object.defineProperty(module.exports, 'dbPool', {
+  enumerable: true,
+  configurable: true,
+  get: () => dbPoolProxy,
+});

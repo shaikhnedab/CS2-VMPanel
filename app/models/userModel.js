@@ -22,9 +22,7 @@ const logger = require('../modules/logger')('User Model');
 var db = require('../db/db_bridge');
 const config = require('../config');
 const table = config.usersTable
-const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const saltRounds = 10;
 
 function newSecKey() {
   return crypto.randomBytes(32).toString('hex');
@@ -54,42 +52,36 @@ var userDataModel = {
         if (!queryRes) {
           return reject("Error in creating user table");
         }
-
-        query = db.queryFormat(`SELECT * FROM ${table}`);
-        queryRes = await db.query(query);
-        if (!queryRes) {
-          return reject("Error in querying settings, This can be ignored");
-        }
-
-        if (queryRes.length === 0) {
-          let username = "admin"
-          let password = "password"
-
-          bcrypt.hash(password, saltRounds, async function (err, hash) {
-            try {
-              if (err) {
-                logger.error("Error in password Encryption, While registering default user");
-                return reject(err);
-              }
-              password = hash
-              query = db.queryFormat(`INSERT INTO ${table}
-                                      (username,password,sec_key,user_type)
-                                      VALUES (?, ?, ?, ?)`, [username, password, '010102', 1]);
-              queryRes = await db.query(query, true);
-              if (!queryRes) {
-                return reject("Error while filling entry in table");
-              }
-              return resolve(true);
-            } catch (e) {
-              logger.error("Error seeding default user:", e);
-              reject(e);
-            }
-          });
-        } else {
-          return resolve(true);
-        }
+        return resolve(true);
       } catch (error) {
         logger.error("error in createTheTableIfNotExists->", error);
+        reject(error)
+      }
+    });
+  },
+
+  /**
+   * create the initial super-admin account (first-boot wizard only)
+   */
+  createAdmin: function ({ username, hash, user_type } = {}) {
+    return new Promise(async (resolve, reject) => {
+      try {
+
+        // validation
+        if (!username) return reject("Username is not provided");
+        if (!hash) return reject("Password hash is not provided");
+
+        const adminType = Number(user_type) === 0 ? 0 : 1;
+        let query = db.queryFormat(`INSERT INTO ${table}
+                                    (username,password,sec_key,user_type)
+                                    VALUES (?, ?, ?, ?)`, [username, hash, newSecKey(), adminType]);
+        let queryRes = await db.query(query, true);
+        if (!queryRes) {
+          return reject("Error while filling entry in table");
+        }
+        return resolve(queryRes);
+      } catch (error) {
+        logger.error("error in createAdmin->", error);
         reject(error)
       }
     });

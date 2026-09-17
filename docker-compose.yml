@@ -1,37 +1,15 @@
 services:
-  db:
-    image: mariadb:11.8
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
-      MARIADB_DATABASE: ${DB_NAME:-vmpanel}
-      MARIADB_USER: ${DB_USER:-vmpanel}
-      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
-    volumes:
-      - vmpanel-db:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   panel:
     build: .
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
     environment:
       # Docker-friendly overrides (each can also live in .env directly)
-      DB_HOST: db
-      DB_PORT: 3306
       HOSTNAME: ${HOSTNAME:-localhost}
       SERVER_PORT: 3535
       APACHE_PROXY: true # TLS terminates at the reverse proxy
     ports:
       - "${SERVER_PORT:-3535}:3535"
-
-volumes:
-  vmpanel-db:
+    volumes:
+      - ./.env:/app/.env

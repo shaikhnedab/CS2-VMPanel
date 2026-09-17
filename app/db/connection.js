@@ -22,10 +22,13 @@ const logger = require('../modules/logger')('MySQL Connection');
 
 const mysql = require('mysql2/promise');
 const config = require('../config');
-const dbConfig = config.db;
 
-var pool;
-const sqlOptions = {
+let pool = null;
+let keepaliveHandle = null;
+
+function buildOptions() {
+  const dbConfig = (config && config.db) || {};
+  return {
     connectionLimit: 20, //important
     host: dbConfig.db_host,
     user: dbConfig.db_user,
@@ -43,55 +46,59 @@ const sqlOptions = {
     namedPlaceholders: true,
     timezone: 'Z',
     // debug: true
+  };
 }
 
-try {
-    pool = mysql.createPool(sqlOptions);
-
-    // Fail fast: verify connectivity once at startup so a bad password/host
-    // surfaces in logs instead of the first request.
-    pool.query('SELECT 1').then(() => {
-        logger.info('MYSQL connection established');
-    }).catch((error) => {
-        logger.error('MYSQL connection check failed:', error && error.message);
-    });
-} catch (error) {
-    logger.error("Connection Pool Error : ", error);
-}
-
-try {
+function ensureKeepalive() {
+  if (keepaliveHandle) return;
+  try {
     // Keep the pool warm through long idle windows (e.g. low-traffic panels
     // behind the cron-driven delete/notify jobs).
     const handle = setInterval(() => {
-        pool.query('SELECT 1').catch((error) => {
-            logger.error('Pool keepalive ping failed:', error && error.message);
-        });
+      if (!pool) return;
+      pool.query('SELECT 1').catch((error) => {
+        logger.error('Pool keepalive ping failed:', error && error.message);
+      });
     }, 5 * 60 * 1000);
     // Don't keep the process alive on its own (tests / short-lived runners).
     if (typeof handle.unref === 'function') handle.unref();
-} catch (error) {
+    keepaliveHandle = handle;
+  } catch (error) {
     logger.error('Pool keepalive setup error:', error);
+  }
 }
 
-// pool.getConnection((err, connection) => {
-//     if (err) {
-//         if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-//             console.error('Database connection was closed.');
-//         }
-//         if (err.code === 'ER_CON_COUNT_ERROR') {
-//             console.error('Database has too many connections.');
-//         }
-//         if (err.code === 'ECONNREFUSED') {
-//             console.error('Database connection was refused.');
-//         }
-//     }
+function getPool() {
+  if (pool) return pool;
+  try {
+    pool = mysql.createPool(buildOptions());
+    ensureKeepalive();
+  } catch (error) {
+    logger.error('Connection Pool Error : ', error);
+    throw error;
+  }
+  return pool;
+}
 
-//     if (connection) {
-//         logger.info("MYSQL connection established");
-//         connection.release();
-//     }
+async function resetPool() {
+  await closePool();
+  return getPool();
+}
 
-//     return;
-// });
+async function closePool() {
+  const p = pool;
+  pool = null;
+  if (keepaliveHandle) {
+    try { clearInterval(keepaliveHandle); } catch (e) { /* ignore */ }
+    keepaliveHandle = null;
+  }
+  if (p) {
+    try { await p.end(); } catch (e) { /* ignore close errors */ }
+  }
+}
 
-module.exports = pool;
+module.exports = {
+  getPool,
+  resetPool,
+  closePool,
+};

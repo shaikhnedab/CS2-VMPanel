@@ -4,51 +4,76 @@
 
 const fs = require('fs');
 const path = require('path');
-const db = require('./db_bridge');
 const logger = require('../modules/logger')('Migrate');
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 const MIGRATIONS_TABLE = 'schema_migrations';
 
-(async () => {
-  try {
-    await db.query(`CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
+async function runMigrations(queryFn) {
+  await queryFn(`CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
       id INT AUTO_INCREMENT PRIMARY KEY,
       filename VARCHAR(120) NOT NULL UNIQUE,
       applied_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-    const files = fs.readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
+  const files = fs.readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
 
-    const rows = await db.query(`SELECT filename FROM ${MIGRATIONS_TABLE}`);
-    const applied = new Set(rows.map((r) => r.filename));
+  const rows = await queryFn(`SELECT filename FROM ${MIGRATIONS_TABLE}`);
+  const applied = new Set((rows || []).map((r) => r.filename));
 
-    let ran = 0;
-    for (const file of files) {
-      if (applied.has(file)) continue;
-      logger.info(`Applying ${file}...`);
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+  let ran = 0;
+  for (const file of files) {
+    if (applied.has(file)) continue;
+    logger.info(`Applying ${file}...`);
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
 
-      // Strip SQL comments (-- and /* */) and split on statement boundaries.
-      const cleaned = sql
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^--.*$/gm, '')
-        .split(';')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+    // Strip SQL comments (-- and /* */) and split on statement boundaries.
+    const cleaned = sql
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^--.*$/gm, '')
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
 
-      for (const stmt of cleaned) {
-        await db.query(stmt);
-      }
-      await db.query(db.queryFormat(`INSERT INTO ${MIGRATIONS_TABLE} (filename, applied_at) VALUES (?, NOW())`, [file]));
-      ran++;
+    for (const stmt of cleaned) {
+      await queryFn(stmt);
     }
-    logger.info(`Migrate complete. Applied ${ran} new migration(s).`);
+    // Filename is allowlisted from the migrations directory listing
+    // (*.sql, sorted); safe to interpolate as an escaped literal.
+    const mysql = require('mysql2');
+    await queryFn(mysql.format(`INSERT INTO ${MIGRATIONS_TABLE} (filename, applied_at) VALUES (?, NOW())`, [file]));
+    ran++;
+  }
+  logger.info(`Migrate complete. Applied ${ran} new migration(s).`);
+  return ran;
+}
+
+async function main() {
+  let config;
+  try {
+    config = require('../config');
+  } catch (e) {
+    config = null;
+  }
+  if (config && typeof config.isSetupComplete === 'function' && !config.isSetupComplete()) {
+    logger.info('Setup incomplete — skipping migrations (run the /install wizard first).');
+    process.exit(0);
+    return;
+  }
+  try {
+    const db = require('./db_bridge');
+    await runMigrations(db.query);
     process.exit(0);
   } catch (error) {
     logger.error('Migration failed:', error && (error.stack || error));
     process.exit(1);
   }
-})();
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { runMigrations, MIGRATIONS_DIR, MIGRATIONS_TABLE };

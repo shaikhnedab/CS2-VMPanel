@@ -97,7 +97,7 @@ return heading
 <body class="dark-edition" data-theme="<%= (panelSetting && panelSetting.color_theme) || 'primary' %>">
   <a class="skip-link" href="#vmpMain">Skip to main content</a>
   <div id="vmpNavScrim" onclick="vmpToggleNav(false)"></div>
-  <%if(defaultCredWarning){%>
+  <%if(typeof defaultCredWarning !== 'undefined' && defaultCredWarning){%>
   <div class="vmp-default-cred-alert" role="alert">
     <i class="material-icons" aria-hidden="true">warning_amber</i>
     <span>You are signed in with the default <code>admin</code> account. Change its password before making this panel public.</span>

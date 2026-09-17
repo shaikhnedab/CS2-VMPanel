@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node tests/smoke.js",
+    "test": "node tests/smoke.js && node tests/install.js",
     "start": "node server.js",
     "migrate": "node app/db/migrate.js"
   },

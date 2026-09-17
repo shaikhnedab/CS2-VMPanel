@@ -24,10 +24,8 @@ const config = require('../config');
 const logger = require('../modules/logger')('Login Controller');
 const User = require('../modules/user');
 
-const jwtSecretKey = config.jwt.key;
-const steamApi = config.steam_api_key;
-
 exports.loginPage = async (req, res) => {
+  const steamApi = config.steam_api_key;
   const isAdminRoute = (req.route.path === "/adminlogin") || (req.headers.referer && req.headers.referer.indexOf("/adminlogin") != -1);
   try {
     if (req.session.token || req.session.passport) return res.redirect('/');
@@ -49,6 +47,8 @@ exports.loginPage = async (req, res) => {
 exports.authUserLogin = async (req, res) => {
   const referer = (req.headers && req.headers.referer) || '';
   const isAdminRoute = referer.indexOf("/adminlogin") != -1;
+  const jwtSecretKey = config.jwt.key;
+  const steamApi = config.steam_api_key;
   try {
     let username = req.body.username;
     let password = req.body.password;
@@ -87,11 +87,6 @@ const bcryptCompare = (candidate, hash) => new Promise((resolve) => {
       req.session.username = userData.username;
       req.session.sec_key = userData.sec_key;
       req.session.user_type = userData.user_type;
-
-      // Warn if the operator is still on the shipped default credential
-      // (admin/password) so it gets rotated before going live.
-      const isDefault = userData.username === 'admin' ? await bcryptCompare('password', userData.password) : false;
-      req.session.defaultCredWarning = isDefault;
 
       return res.redirect('/managevip');
   } catch (error) {
