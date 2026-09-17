@@ -204,12 +204,20 @@ function createApp() {
 
   // middleware to make 'user' available to all templates
   app.use(async function (req, res, next) {
-    try {
-      res.locals.panelSetting = await settingsModal.getAllSettings();
-      res.locals.dbUnreachable = false;
-    } catch (e) {
+    if (!isCompleteNow()) {
+      // First-boot wizard mode: never touch the database here. The wizard
+      // is self-contained; probing it only spams ENOTFOUND logs when the
+      // user has not configured (or cannot yet reach) their database.
       res.locals.panelSetting = {};
       res.locals.dbUnreachable = true;
+    } else {
+      try {
+        res.locals.panelSetting = await settingsModal.getAllSettings();
+        res.locals.dbUnreachable = false;
+      } catch (e) {
+        res.locals.panelSetting = {};
+        res.locals.dbUnreachable = true;
+      }
     }
     try {
       res.locals.sessionToken = req.session.token;
