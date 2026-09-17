@@ -100,6 +100,7 @@ button{cursor:pointer;border-radius:10px;font-size:14px;font-weight:600;padding:
   var testBtn = document.getElementById('testBtn');
   var installBtn = document.getElementById('installBtn');
   var okBox = document.getElementById('connOk');
+  var lastTest = 0;
   function csrf() {
     var m = document.querySelector('meta[name="csrf-token"]');
     return m ? m.getAttribute('content') : '';
@@ -115,6 +116,9 @@ button{cursor:pointer;border-radius:10px;font-size:14px;font-weight:600;padding:
     };
   }
   testBtn.addEventListener('click', function () {
+    var now = Date.now();
+    if (now - lastTest < 3000) return; // ignore accidental double-clicks; the server rate-limits probes
+    lastTest = now;
     okBox.style.display = 'none';
     testBtn.disabled = true;
     testBtn.textContent = 'Testing…';

@@ -301,11 +301,12 @@ async function main() {
       assert.strictEqual(r.status, 200);
       assert.strictEqual(JSON.parse(r.body).success, true);
     });
+    let noCookieToken = null;
     await ok('wizard test-connection works with cookies blocked (stateless CSRF)', async () => {
       jar = []; // simulate a browser that drops all cookies
       const g = await request('GET', '/install');
       assert.strictEqual(g.status, 200);
-      const noCookieToken = extractCsrf(g.body);
+      noCookieToken = extractCsrf(g.body);
       assert.ok(noCookieToken && noCookieToken.length >= 32);
       jar = []; // drop the Set-Cookie from the GET too: POST carries no Cookie header
       const payload = JSON.stringify({ db_host: 'h', db_port: 3306, db_user: 'u', db_password: 'p', db_name: 'vmpanel', _csrf: noCookieToken });
@@ -316,6 +317,19 @@ async function main() {
       assert.strictEqual(r.status, 200);
       assert.strictEqual(JSON.parse(r.body).success, true);
       jar = []; // stay cookie-less; remaining wizard POSTs must not need cookies either
+    });
+    await ok('wizard test-connection answers JSON 429 when over budget', async () => {
+      let last = null;
+      for (let i = 0; i < 40 && (!last || last.status !== 429); i++) {
+        const payload = JSON.stringify({ db_host: 'h', db_port: 3306, db_user: 'u', db_password: 'p', db_name: 'vmpanel', _csrf: noCookieToken });
+        last = await request('POST', '/install/test-connection', {
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': noCookieToken, 'Content-Length': Buffer.byteLength(payload) },
+          body: payload,
+        });
+      }
+      assert.strictEqual(last.status, 429);
+      assert.strictEqual(JSON.parse(last.body).success, false);
+      assert.ok(/too many attempts/i.test(JSON.parse(last.body).data.message));
     });
     await ok('wizard rejects weak admin password without secrets', async () => {
       const form = new URLSearchParams({
@@ -349,6 +363,56 @@ async function main() {
     await ok('wizard GET /install 404s after completion', async () => {
       const r = await request('GET', '/install');
       assert.strictEqual(r.status, 404);
+    });
+    await ok('wizard submit renders friendly 429 when over budget', async () => {
+      // Needs a fresh app: the main server's submit budget is reserved for the
+      // success test, and this runs after completion. Temporarily flip setup
+      // back to incomplete so the gate lets POSTs reach the limiter.
+      install.resetInstallState();
+      const httpEnvBak = process.env.DOTENV_PATH;
+      for (const k of ['SETUP_COMPLETE', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'APP_SESSION_SECRET', 'STEAM_API_KEY']) delete process.env[k];
+      process.env.DOTENV_PATH = path.join(tmpDir, 'incomplete.env');
+      try { fs.unlinkSync(process.env.DOTENV_PATH); } catch (e) { /* absent */ }
+      const app2 = createApp();
+      const server2 = await new Promise((resolve) => {
+        const s = app2.listen(0, () => resolve(s));
+      });
+      const port2 = server2.address().port;
+      const request2 = (method, reqPath, { headers = {}, body = null } = {}) => new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port: port2, path: reqPath, method, headers: { ...headers } }, (res) => {
+          let data = '';
+          res.on('data', (c) => { data += c; });
+          res.on('end', () => resolve({ status: res.statusCode, body: data }));
+        });
+        req.on('error', reject);
+        if (body !== null) req.write(body);
+        req.end();
+      });
+      try {
+        const g = await request2('GET', '/install');
+        assert.strictEqual(g.status, 200);
+        const tok2 = extractCsrf(g.body);
+        assert.ok(tok2 && tok2.length >= 32);
+        let last = null;
+        for (let i = 0; i < 14 && (!last || last.status !== 429); i++) {
+          const form = new URLSearchParams({
+            db_host: 'h', db_port: '3306', db_user: 'u', db_password: 'p', db_name: 'vmpanel',
+            admin_username: 'owner', admin_password: 'short', admin_password_confirm: 'short',
+            steam_api_key: '', _csrf: tok2,
+          }).toString();
+          last = await request2('POST', '/install', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(form) },
+            body: form,
+          });
+        }
+        assert.strictEqual(last.status, 429);
+        assert.ok(/too many attempts/i.test(last.body));
+        assert.ok(!/s3cret|supersecret/i.test(last.body));
+      } finally {
+        await new Promise((resolve) => server2.close(resolve));
+        process.env.DOTENV_PATH = httpEnvBak;
+        install.resetInstallState();
+      }
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

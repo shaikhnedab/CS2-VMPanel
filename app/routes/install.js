@@ -115,11 +115,30 @@ async function testConnection(opts) {
 }
 
 function registerInstallRoutes(app) {
-  const installLimiter = rateLimit({
+  // Separate budgets: connection tests are harmless probes (generous budget
+  // so normal retrying never trips it); the submit writes config + secrets
+  // and stays tight. Both answer 429 in the shape each caller expects
+  // instead of express-rate-limit's default plain-text body.
+  const testLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => res.status(429).json({
+      success: false,
+      data: { message: 'Too many attempts. Wait a few minutes and try again.' },
+    }),
+  });
+  const submitLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (req, res) => res.status(429).render('Install', {
+      error: 'Too many attempts. Wait a few minutes and try again.',
+      values: safeValues(req.body),
+      csrfToken: mintInstallToken(),
+    }),
   });
 
   app.get('/install', (req, res) => {
@@ -131,7 +150,7 @@ function registerInstallRoutes(app) {
     });
   });
 
-  app.post('/install/test-connection', installLimiter, verifyInstallTokenMw, async (req, res) => {
+  app.post('/install/test-connection', testLimiter, verifyInstallTokenMw, async (req, res) => {
     if (isComplete()) return res.status(404).json({ success: false, data: { message: 'Not found' } });
     try {
       const host = String((req.body && req.body.db_host) || '').trim();
@@ -154,7 +173,7 @@ function registerInstallRoutes(app) {
     }
   });
 
-  app.post('/install', installLimiter, verifyInstallTokenMw, async (req, res) => {
+  app.post('/install', submitLimiter, verifyInstallTokenMw, async (req, res) => {
     if (isComplete()) return res.status(404).render('404');
     if (installing) return res.status(429).render('Install', {
       error: 'Setup is already in progress. Please wait and try again.',
