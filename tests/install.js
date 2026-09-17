@@ -208,6 +208,33 @@ async function main() {
     assert.ok(Number.isInteger(ran) && ran >= 1);
     assert.ok(seen.some((s) => /schema_migrations/.test(s)));
   });
+  await ok('migration 001 avoids MariaDB-only IF NOT EXISTS (MySQL syntax)', () => {
+    const sql001 = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '001_indexes_gifting.sql'), 'utf8');
+    const executable = sql001.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    assert.ok(!/IF NOT EXISTS/i.test(executable), '001 must parse on MySQL');
+  });
+  await ok('runMigrations tolerates already-exists errors, fails others', async () => {
+    const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
+    const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });
+    const calls = [];
+    const fakeQuery = async (sql) => {
+      calls.push(String(sql));
+      if (/SELECT filename/i.test(String(sql))) return [];
+      if (/SCHEMA_MIGRATIONS/i.test(String(sql)) && !/INSERT/i.test(String(sql))) return { affectedRows: 1 };
+      if (calls.length % 2 === 0 && !/INSERT INTO `?schema_migrations/i.test(String(sql))) {
+        throw (calls.length % 4 === 0) ? dupKey : dupField;
+      }
+      return { affectedRows: 1 };
+    };
+    const ran = await runMigrations(fakeQuery);
+    assert.ok(ran >= 1, 'partial applies converge instead of throwing');
+    const badQuery = async (sql) => {
+      if (/SELECT filename/i.test(String(sql))) return [];
+      const e = Object.assign(new Error('syntax'), { code: 'ER_PARSE_ERROR', errno: 1064 });
+      throw e;
+    };
+    await assert.rejects(() => runMigrations(badQuery), /syntax/);
+  });
 
   // ---- 5. HTTP wizard flow (stubbed mysql2, no real DB) ----
   const httpEnv = path.join(tmpDir, 'http.env');

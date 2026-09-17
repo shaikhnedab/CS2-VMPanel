@@ -189,6 +189,7 @@ function registerInstallRoutes(app) {
       });
     }
     installing = true;
+    let stage = 'writing configuration';
     try {
       const connTest = await testConnection({
         host: values.dbHost,
@@ -225,16 +226,20 @@ function registerInstallRoutes(app) {
       const { resetPool } = require('../db/connection');
       await resetPool();
 
+      stage = 'creating tables';
       const bootstrap = require('../db/bootstrap');
       await bootstrap();
 
+      stage = 'applying database migrations';
       const { runMigrations } = require('../db/migrate');
       const db = require('../db/db_bridge');
       await runMigrations(db.query);
 
+      stage = 'creating admin account';
       const userModel = require('../models/userModel');
       await userModel.createAdmin({ username: values.adminUsername, hash });
 
+      stage = 'finalizing setup';
       envWriter.writeEnv({ SETUP_COMPLETE: 'true' });
       config.reload();
       markComplete();
@@ -242,13 +247,14 @@ function registerInstallRoutes(app) {
       logger.info('First-boot setup completed');
       return res.redirect(302, '/login');
     } catch (e) {
-      logger.error('Install setup failed');
+      const summary = dbErrorSummary(e);
+      logger.error(`Install setup failed while ${stage}${summary ? `: ${summary}` : ''}`);
       try {
         const { closePool } = require('../db/connection');
         await closePool();
       } catch (ce) { /* ignore */ }
       return res.status(500).render('Install', {
-        error: 'Setup failed. Check the database details and try again.',
+        error: `Setup failed while ${stage}${summary ? `: ${summary}` : ''}. Check the database details and try again.`,
         values: safeValues(req.body),
         csrfToken: mintInstallToken(),
       });
@@ -256,6 +262,15 @@ function registerInstallRoutes(app) {
       installing = false;
     }
   });
+}
+
+// Short, credential-free failure summary for the wizard UI and logs.
+// Only the error code/message are exposed — never the SQL text or values.
+function dbErrorSummary(e) {
+  if (!e) return '';
+  const code = e.code || e.errno || '';
+  const msg = e.sqlMessage || e.message || '';
+  return `${code}${code && msg ? ': ' : ''}${msg}`.trim().slice(0, 200);
 }
 
 function safeValues(body) {

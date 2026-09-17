@@ -38,7 +38,20 @@ async function runMigrations(queryFn) {
       .filter((s) => s.length > 0);
 
     for (const stmt of cleaned) {
-      await queryFn(stmt);
+      try {
+        await queryFn(stmt);
+      } catch (e) {
+        // Converge on partial applies: the object this statement creates may
+        // already exist (interrupted run, legacy schema). Anything else fails
+        // the migration. Codes are shared by MySQL and MariaDB (mysql2 sets
+        // both `code` and `errno`).
+        const code = e && (e.code || e.errno);
+        if (code === 'ER_DUP_KEYNAME' || code === 1061 || code === 'ER_DUP_FIELDNAME' || code === 1060) {
+          logger.info(`Skipping already-applied statement in ${file}`);
+          continue;
+        }
+        throw e;
+      }
     }
     // Filename is allowlisted from the migrations directory listing
     // (*.sql, sorted); safe to interpolate as an escaped literal.
