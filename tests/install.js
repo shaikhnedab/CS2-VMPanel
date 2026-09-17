@@ -140,6 +140,23 @@ async function main() {
     assert.ok(content2.includes('INSTALL_TEST_A=hello'));
     assert.ok(content2.includes('INSTALL_TEST_C=third'));
   });
+  await ok('envWriter falls back to in-place copy when rename hits EBUSY (bind mount)', () => {
+    // Simulate `./.env:/app/.env`: rename onto the mountpoint fails, the copy
+    // must carry the content through and clean up the temp file.
+    const origRename = fs.renameSync;
+    const busy = new Error('resource busy or locked, rename');
+    busy.code = 'EBUSY';
+    fs.renameSync = () => { throw busy; };
+    try {
+      const target = envWriter.writeEnv({ INSTALL_TEST_MOUNT: 'through-the-mount' });
+      const content = fs.readFileSync(target, 'utf8');
+      assert.ok(content.includes('INSTALL_TEST_MOUNT=through-the-mount'));
+      const leftovers = fs.readdirSync(path.dirname(target)).filter((f) => f.startsWith('.env.tmp-'));
+      assert.deepStrictEqual(leftovers, []);
+    } finally {
+      fs.renameSync = origRename;
+    }
+  });
   await ok('envWriter generates unique 64-hex secrets', () => {
     const a = envWriter.generateSecret();
     const b = envWriter.generateSecret();

@@ -80,7 +80,30 @@ function writeEnv(values) {
     try { fs.closeSync(fd); } catch (e) { /* ignore */ }
   }
   try { fs.chmodSync(tmpPath, 0o600); } catch (e) { /* best effort */ }
-  fs.renameSync(tmpPath, targetPath);
+  try {
+    fs.renameSync(tmpPath, targetPath);
+  } catch (e) {
+    // The target may be a bind-mounted file (e.g. `./.env:/app/.env`): rename
+    // onto a mountpoint fails with EBUSY/EPERM (EXDEV across devices, EACCES
+    // when the directory is locked but the file itself is writable). Fall back
+    // to an in-place copy through the mount, then remove the temp file.
+    if (!e || !['EBUSY', 'EPERM', 'EXDEV', 'EACCES'].includes(e.code)) throw e;
+    logger.info('Atomic rename unavailable, copying env file in place');
+    try {
+      fs.copyFileSync(tmpPath, targetPath);
+      try { fs.chmodSync(targetPath, 0o600); } catch (ce) { /* best effort on mounts */ }
+      try {
+        const fdSync = fs.openSync(targetPath, 'r');
+        try { fs.fsyncSync(fdSync); } catch (se) { /* best effort */ }
+        try { fs.closeSync(fdSync); } catch (ce2) { /* ignore */ }
+      } catch (oe) { /* best effort */ }
+    } catch (copyErr) {
+      try { fs.unlinkSync(tmpPath); } catch (u) { /* ignore */ }
+      logger.error('Failed to write env file');
+      throw copyErr;
+    }
+    try { fs.unlinkSync(tmpPath); } catch (u) { /* ignore */ }
+  }
   logger.info('Environment file written');
   return targetPath;
 }
