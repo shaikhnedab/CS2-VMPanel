@@ -43,10 +43,10 @@ sudo mysql -e "CREATE DATABASE vmpanel CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 
 # 2. Panel
 npm install
-cp .env.example .env   # then edit DB_* and secrets (min 32 chars)
-npm run migrate        # apply schema migrations (indexes, gifting columns)
+cp .env.example .env   # optional — skip this and the wizard below creates .env for you
+npm run migrate        # apply schema migrations (indexes, gifting columns; no-ops until setup is complete)
 npm test               # smoke tests, no DB needed
-node server.js         # http://localhost:3535
+node server.js         # http://localhost:3535 → redirects to the /install wizard on first boot
 ```
 
 Default login is the admin account you create in the first-boot wizard below — there are no shipped credentials.
@@ -124,7 +124,7 @@ Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/
 | `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | yes | MySQL/MariaDB connection (external host — the compose stack bundles no database) |
 | `JWT_SECRET` `APP_SESSION_SECRET` | yes | Auth/session signing (≥32 random chars) |
 | `STEAM_API_KEY` | for player login | Steam Web API key |
-| `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | Set `APACHE_PROXY=true` behind nginx/Apache so cookies are `Secure` |
+| `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | `true` behind nginx/Apache (trusts `X-Forwarded-Proto`; cookies are `Secure` automatically on HTTPS). Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
 | `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |
