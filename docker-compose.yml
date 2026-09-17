@@ -1,6 +1,10 @@
 services:
   panel:
-    build: .
+    # Prebuilt image from GHCR (published by .github/workflows/docker-build.yml).
+    # Override the tag with IMAGE_TAG=main, a version (e.g. v2.0.0), or sha-<sha>.
+    image: ghcr.io/shaikhnedab/cs2-vmpanel:${IMAGE_TAG:-latest}
+    # Building locally instead? Comment the image: line above and uncomment:
+    # build: .
     restart: unless-stopped
     env_file:
       - .env

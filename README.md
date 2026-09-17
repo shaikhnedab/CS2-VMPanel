@@ -53,19 +53,24 @@ Default login is the admin account you create in the first-boot wizard below —
 
 ## Quick start — Docker (external MySQL, no bundled database)
 
-The compose stack runs only the panel container. Provision MySQL/MariaDB yourself
-(any host reachable from the container: managed DB, host package, or a separate
-container on your own network) and point `DB_*` at it.
+The compose stack runs only the panel container using the prebuilt image from
+GHCR (published by [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)
+on every `main` push: `latest`, `main`, `sha-*`, plus `v*` version tags).
+Provision MySQL/MariaDB yourself (any host reachable from the container:
+managed DB, host package, or a separate container on your own network).
 
 ```bash
-cp .env.example .env   # set DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME (no DB_ROOT_PASSWORD)
-docker compose up -d --build
+docker compose pull            # prebuilt ghcr.io/shaikhnedab/cs2-vmpanel:latest
+docker compose up -d
 docker compose logs -f panel
 # → http://localhost:3535 (first visit redirects to the /install wizard)
 ```
 
-The wizard output is persisted via the `./.env:/app/.env` volume mount, so
-restarting or rebuilding the container keeps your configuration.
+Pin a version with `IMAGE_TAG` (e.g. `IMAGE_TAG=v2.0.0 docker compose up -d`).
+Prefer building locally? Comment `image:` in `docker-compose.yml`, uncomment
+`build: .`, then `docker compose up -d --build`. Either way you can skip
+`.env` entirely — the wizard writes it on first boot, and the
+`./.env:/app/.env` volume mount keeps it across restarts and rebuilds.
 
 ## Install guide (first boot)
 
