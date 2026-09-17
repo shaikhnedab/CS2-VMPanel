@@ -26,8 +26,8 @@ RUN test -f /app/server.js \
  && test -f /app/views/Install.ejs \
  && test -d /app/public \
  && echo "runtime layout ok" \
- && su vmp -c 'touch /app/.writetest && rm /app/.writetest' \
- && echo "non-root writable ok"
+ && test "$(stat -c %U /app)" = vmp \
+ && echo "non-root owns /app ok (VMPanel.log + .env writable)"
 # Config lives OUTSIDE the image: mount .env or set env vars (see .env.example).
 USER vmp
 EXPOSE 3535
