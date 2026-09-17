@@ -148,7 +148,11 @@ function createApp() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: config.apacheProxy ? true : false,
+      // 'auto' (express-session >= 1.17): Secure flag only on encrypted
+      // connections (direct HTTPS or trusted proxy X-Forwarded-Proto). A
+      // forced Secure cookie is silently dropped by browsers on plain HTTP,
+      // which breaks sessions — including login — on direct-HTTP deployments.
+      secure: config.apacheProxy ? 'auto' : false,
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     }

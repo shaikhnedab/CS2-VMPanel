@@ -9,7 +9,8 @@ COPY . .
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S vmp && adduser -S vmp -G vmp && chown vmp:vmp /app
+RUN addgroup -S vmp && adduser -S vmp -G vmp && chown vmp:vmp /app \
+  && apk add --no-cache su-exec
 COPY --from=build --chown=vmp:vmp /app/package.json /app/package-lock.json /app/
 COPY --from=build --chown=vmp:vmp /app/node_modules /app/node_modules
 COPY --chown=vmp:vmp ./server.js /app/server.js
@@ -17,6 +18,8 @@ COPY --chown=vmp:vmp ./app /app/app
 COPY --chown=vmp:vmp ./views /app/views
 COPY --chown=vmp:vmp ./public /app/public
 COPY --chown=vmp:vmp ./tests /app/tests
+COPY ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Fail the build loudly if the runtime layout is wrong (CMD/HEALTHCHECK
 # depend on these exact paths; a silent flatten breaks the container).
 RUN test -f /app/server.js \
@@ -29,7 +32,9 @@ RUN test -f /app/server.js \
  && test "$(stat -c %U /app)" = vmp \
  && echo "non-root owns /app ok (VMPanel.log + .env writable)"
 # Config lives OUTSIDE the image: mount .env or set env vars (see .env.example).
-USER vmp
+# No USER directive: the entrypoint starts as root to hand bind-mounted files
+# (host-created .env is root-owned) to vmp, then drops privileges via su-exec.
+ENTRYPOINT ["docker-entrypoint.sh"]
 EXPOSE 3535
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3535/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"

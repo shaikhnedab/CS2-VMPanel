@@ -103,7 +103,9 @@ Start the panel with **no `.env`** (or `SETUP_COMPLETE=false`):
    **Install & continue**.
 4. The panel re-tests the connection, writes `.env` (mode `0600`),
    creates tables, runs migrations, creates the super-admin (bcrypt cost 12),
-   flips `SETUP_COMPLETE=true`, and redirects to `/login`.
+   flips `SETUP_COMPLETE=true`, and redirects to `/login`. The container
+   entrypoint owns the mounted `.env` to the app user automatically, so no
+   manual `chown` is needed on first boot.
 
 After setup `/install*` returns `404` and never reopens — even if the
 database later goes down (those requests fail with a generic error instead).
