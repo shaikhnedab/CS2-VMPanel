@@ -72,6 +72,14 @@ Prefer building locally? Comment `image:` in `docker-compose.yml`, uncomment
 `.env` entirely — the wizard writes it on first boot, and the
 `./.env:/app/.env` volume mount keeps it across restarts and rebuilds.
 
+Container crash-looping? Pull fresh and recreate (stale images are the usual
+cause — `up` alone never re-pulls):
+
+```bash
+docker compose pull && docker compose up -d --force-recreate
+docker compose logs -f panel
+```
+
 ## Install guide (first boot)
 
 Provision MySQL 8.0+ / MariaDB 10.6+ first and create an empty database plus a

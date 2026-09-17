@@ -10,9 +10,22 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 RUN addgroup -S vmp && adduser -S vmp -G vmp
-COPY --from=build --chown=vmp:vmp /app/package.json /app/package-lock.json ./
-COPY --from=build --chown=vmp:vmp /app/node_modules ./node_modules
-COPY --chown=vmp:vmp server.js app views public tests ./
+COPY --from=build --chown=vmp:vmp /app/package.json /app/package-lock.json /app/
+COPY --from=build --chown=vmp:vmp /app/node_modules /app/node_modules
+COPY --chown=vmp:vmp ./server.js /app/server.js
+COPY --chown=vmp:vmp ./app /app/app
+COPY --chown=vmp:vmp ./views /app/views
+COPY --chown=vmp:vmp ./public /app/public
+COPY --chown=vmp:vmp ./tests /app/tests
+# Fail the build loudly if the runtime layout is wrong (CMD/HEALTHCHECK
+# depend on these exact paths; a silent flatten breaks the container).
+RUN test -f /app/server.js \
+ && test -f /app/app/db/migrate.js \
+ && test -f /app/app/routes/install.js \
+ && test -f /app/views/Login.ejs \
+ && test -f /app/views/Install.ejs \
+ && test -d /app/public \
+ && echo "runtime layout ok"
 # Config lives OUTSIDE the image: mount .env or set env vars (see .env.example).
 USER vmp
 EXPOSE 3535
