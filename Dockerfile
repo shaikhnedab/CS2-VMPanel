@@ -9,7 +9,7 @@ COPY . .
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S vmp && adduser -S vmp -G vmp
+RUN addgroup -S vmp && adduser -S vmp -G vmp && chown vmp:vmp /app
 COPY --from=build --chown=vmp:vmp /app/package.json /app/package-lock.json /app/
 COPY --from=build --chown=vmp:vmp /app/node_modules /app/node_modules
 COPY --chown=vmp:vmp ./server.js /app/server.js
@@ -25,7 +25,9 @@ RUN test -f /app/server.js \
  && test -f /app/views/Login.ejs \
  && test -f /app/views/Install.ejs \
  && test -d /app/public \
- && echo "runtime layout ok"
+ && echo "runtime layout ok" \
+ && su vmp -c 'touch /app/.writetest && rm /app/.writetest' \
+ && echo "non-root writable ok"
 # Config lives OUTSIDE the image: mount .env or set env vars (see .env.example).
 USER vmp
 EXPOSE 3535
