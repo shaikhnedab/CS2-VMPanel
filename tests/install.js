@@ -52,6 +52,24 @@ async function main() {
   });
 
   // ---- 1. pure validation ----
+  await ok('install token accepts a fresh token', () => {
+    const { mintInstallToken, verifyInstallToken } = require('../app/utils/installToken');
+    assert.strictEqual(verifyInstallToken(mintInstallToken()), true);
+  });
+  await ok('install token rejects tampered / malformed / expired tokens', () => {
+    const { mintInstallToken, verifyInstallToken, WINDOW_MS } = require('../app/utils/installToken');
+    const fresh = mintInstallToken();
+    const tampered = fresh.slice(0, -1) + (fresh.endsWith('0') ? '1' : '0');
+    assert.strictEqual(verifyInstallToken(tampered), false);
+    assert.strictEqual(verifyInstallToken('not-a-token'), false);
+    assert.strictEqual(verifyInstallToken(''), false);
+    assert.strictEqual(verifyInstallToken(null), false);
+    assert.strictEqual(verifyInstallToken(mintInstallToken(), 0 - 1), false); // negative window
+    const expired = mintInstallToken(Date.now() - WINDOW_MS - 1000);
+    assert.strictEqual(verifyInstallToken(expired), false);
+    const future = mintInstallToken(Date.now() + 10 * 60 * 1000);
+    assert.strictEqual(verifyInstallToken(future), false);
+  });
   await ok('validation accepts a good body', () => {
     const { errors } = validateInstallBody(good());
     assert.deepStrictEqual(errors, []);
@@ -282,6 +300,22 @@ async function main() {
       });
       assert.strictEqual(r.status, 200);
       assert.strictEqual(JSON.parse(r.body).success, true);
+    });
+    await ok('wizard test-connection works with cookies blocked (stateless CSRF)', async () => {
+      jar = []; // simulate a browser that drops all cookies
+      const g = await request('GET', '/install');
+      assert.strictEqual(g.status, 200);
+      const noCookieToken = extractCsrf(g.body);
+      assert.ok(noCookieToken && noCookieToken.length >= 32);
+      jar = []; // drop the Set-Cookie from the GET too: POST carries no Cookie header
+      const payload = JSON.stringify({ db_host: 'h', db_port: 3306, db_user: 'u', db_password: 'p', db_name: 'vmpanel', _csrf: noCookieToken });
+      const r = await request('POST', '/install/test-connection', {
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': noCookieToken, 'Content-Length': Buffer.byteLength(payload) },
+        body: payload,
+      });
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(JSON.parse(r.body).success, true);
+      jar = []; // stay cookie-less; remaining wizard POSTs must not need cookies either
     });
     await ok('wizard rejects weak admin password without secrets', async () => {
       const form = new URLSearchParams({

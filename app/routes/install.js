@@ -4,7 +4,24 @@ const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const config = require('../config');
 const logger = require('../modules/logger')('Install');
-const { verifyCsrf } = require('../middleWares/csrf');
+const { mintInstallToken, verifyInstallToken } = require('../utils/installToken');
+
+function verifyInstallTokenMw(req, res, next) {
+  const provided =
+    (req.headers['x-csrf-token']) ||
+    (req.body && (req.body._csrf || req.body.csrfToken));
+  if (!verifyInstallToken(provided, 2 * 60 * 60 * 1000)) {
+    if ((req.path || '').endsWith('/test-connection')) {
+      return res.status(403).json({ success: false, data: { message: 'CSRF token mismatch. Reload the page and try again.' } });
+    }
+    return res.status(403).render('Install', {
+      error: 'Session expired. Reload the page and try again.',
+      values: safeValues(req.body),
+      csrfToken: mintInstallToken(),
+    });
+  }
+  return next();
+}
 
 const DB_NAME_RE = /^[A-Za-z0-9_]{1,64}$/;
 const ADMIN_USER_RE = /^[A-Za-z0-9_.-]{3,32}$/;
@@ -110,11 +127,11 @@ function registerInstallRoutes(app) {
     return res.render('Install', {
       error: null,
       values: { db_host: '', db_port: '3306', db_user: '', db_name: '', admin_username: '', steam_api_key: '' },
-      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+      csrfToken: mintInstallToken(),
     });
   });
 
-  app.post('/install/test-connection', installLimiter, verifyCsrf, async (req, res) => {
+  app.post('/install/test-connection', installLimiter, verifyInstallTokenMw, async (req, res) => {
     if (isComplete()) return res.status(404).json({ success: false, data: { message: 'Not found' } });
     try {
       const host = String((req.body && req.body.db_host) || '').trim();
@@ -137,19 +154,19 @@ function registerInstallRoutes(app) {
     }
   });
 
-  app.post('/install', installLimiter, verifyCsrf, async (req, res) => {
+  app.post('/install', installLimiter, verifyInstallTokenMw, async (req, res) => {
     if (isComplete()) return res.status(404).render('404');
     if (installing) return res.status(429).render('Install', {
       error: 'Setup is already in progress. Please wait and try again.',
       values: safeValues(req.body),
-      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+      csrfToken: mintInstallToken(),
     });
     const { errors, values } = validateInstallBody(req.body || {});
     if (errors.length > 0) {
       return res.status(400).render('Install', {
         error: errors[0],
         values: safeValues(req.body),
-        csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+        csrfToken: mintInstallToken(),
       });
     }
     installing = true;
@@ -166,7 +183,7 @@ function registerInstallRoutes(app) {
         return res.status(400).render('Install', {
           error: 'Could not connect to the database. Check host, port, user, and password.',
           values: safeValues(req.body),
-          csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+          csrfToken: mintInstallToken(),
         });
       }
 
@@ -214,7 +231,7 @@ function registerInstallRoutes(app) {
       return res.status(500).render('Install', {
         error: 'Setup failed. Check the database details and try again.',
         values: safeValues(req.body),
-        csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+        csrfToken: mintInstallToken(),
       });
     } finally {
       installing = false;

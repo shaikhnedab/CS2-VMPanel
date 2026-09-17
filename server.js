@@ -176,8 +176,14 @@ function createApp() {
   }));
 
   // CSRF: every non-safe request must carry the session token.
-  // Exceptions: statics already served earlier; Steam OpenID handback is a GET.
-  app.use(csrfMiddleware.verifyCsrf);
+  // Exceptions: statics already served earlier; Steam OpenID handback is a GET;
+  // /install* enforces its own cookie-independent token (the wizard must work
+  // in browsers that block cookies) plus a strict rate limit — see
+  // app/routes/install.js. Post-setup the gate above 404s /install* anyway.
+  app.use((req, res, next) => {
+    if (req.path === '/install' || req.path.startsWith('/install/')) return next();
+    csrfMiddleware.verifyCsrf(req, res, next);
+  });
 
   // Liveness probe — no DB, no auth.
   app.get('/healthz', (req, res) => {
