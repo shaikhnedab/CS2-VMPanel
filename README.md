@@ -129,6 +129,54 @@ never rolls back the VIP/admin database write (the toast reports it instead).
 
 Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) (publishes to GHCR on `main`/tags).
 
+### Payments — PayPal, PayU, Razorpay
+
+The store shows a gateway button only when it is configured, and amounts are
+re-checked server-side (price, currency, signature where applicable) before
+any VIP is granted. Prices come from each server's VIP Price / bundle.
+
+First: Panel Settings → set **Platform Currency** (`USD` or `INR`).
+PayU and Razorpay buttons appear only for `INR`; PayPal appears whenever its
+Client ID is set (charged in the platform currency).
+
+#### PayPal (any currency; typical for USD)
+
+1. https://developer.paypal.com → Dashboard → Apps & Credentials → create a
+   REST app. Sandbox app = test money, Live app = real money.
+2. Copy the **Client ID** (single variable — no secret needed panel-side).
+3. `.env`: `PAYPAL_CLIENT_ID=<id>`, recreate the container, open the store.
+4. Test with a PayPal sandbox buyer; go live by swapping in the Live Client ID.
+
+#### PayU (INR only)
+
+1. PayU merchant dashboard → API access → copy the Test **Key** + **Salt**
+   (keep them paired — a test Key with a live Salt fails the hash check).
+2. `.env`: `PAYU_ENABLED=true`, `PAYU_ENV=test`, `PAYU_MERCHANT_KEY=…`,
+   `PAYU_MERCHANT_SALT=…`; Platform Currency must be `INR`.
+3. Test with PayU's test cards — the checkout opens purple (test) vs green (live).
+4. Go live: `PAYU_ENV=live` plus the Live Key + Salt.
+Note: PayU return URLs are built from your public address, so the panel must
+be publicly reachable or test payments cannot return.
+
+#### Razorpay (INR only)
+
+1. Razorpay Dashboard → Settings → API Keys → generate a **Test** pair
+   (`rzp_test_…` ID + secret).
+2. `.env`: `RAZORPAY_ENABLED=true`, `RAZORPAY_KEY_ID=…`,
+   `RAZORPAY_KEY_SECRET=…`; currency `INR`. (`RAZORPAY_ENV` is accepted but
+   test/live mode actually follows the key prefix.)
+3. Test with Razorpay test cards/UPI — the panel verifies the payment
+   signature server-side before granting VIP.
+4. Go live: generate the **Live** pair (`rzp_live_…`) and swap both values.
+
+After any `.env` change: `docker compose up -d --force-recreate`
+(config loads at boot; plain `up` is not enough).
+
+Troubleshooting: button missing → gateway enabled? (PayPal: Client ID
+present?) currency match (PayU/Razorpay need `INR`)? container recreated
+after the edit? Payment failing at checkout → wrong-mode credentials
+(test key on live checkout or vice versa).
+
 ### Environment
 
 | Variable | Required | Purpose |
