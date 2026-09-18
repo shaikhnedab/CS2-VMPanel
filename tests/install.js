@@ -347,8 +347,8 @@ async function main() {
   });
   await ok('floating labels rest on boxed input text line', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
-    assert.ok(/\.bmd-form-group \.bmd-label-floating\s*\{\s*top:\s*0\.8rem !important/.test(css), 'resting offset pinned');
-    assert.ok(css.includes('.bmd-form-group .is-filled .bmd-label-floating'), 'floated offset preserved');
+    assert.ok(/\.bmd-form-group \.bmd-label-floating\s*\{\s*top:\s*0\.8rem;/.test(css), 'resting offset pinned without !important');
+    assert.ok(css.includes('.bmd-form-group.is-filled .bmd-label-floating'), 'floated pin beats vendor float on specificity');
   });
   await ok('migration 004 adds per-server rcon refresh command', () => {
     const sql004 = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '004_server_rcon_refresh_cmd.sql'), 'utf8');

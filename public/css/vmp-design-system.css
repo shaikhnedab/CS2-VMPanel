@@ -133,10 +133,11 @@
 label, .bmd-label-floating { color: var(--muted) !important; }
 /* Boxed Nova inputs rest the floating label on the input text line. The
    vendor resting offset assumed borderless inputs, stranding the label on
-   the box's top border; the floated (valued/focused) offset is kept. */
-.bmd-form-group .bmd-label-floating { top: 0.8rem !important; }
-.bmd-form-group .is-focused .bmd-label-floating,
-.bmd-form-group .is-filled .bmd-label-floating { top: -1rem !important; }
+   the box's top border. The floated pin below beats the vendor float rule on
+   specificity (no !important anywhere), so valued/focused fields still lift. */
+.bmd-form-group .bmd-label-floating { top: 0.8rem; }
+.bmd-form-group.is-filled .bmd-label-floating,
+.bmd-form-group.is-focused .bmd-label-floating { top: -1rem; }
 select.form-control { background-color: var(--surface-solid) !important; color: var(--text) !important; }
 select.form-control option { background: var(--surface-solid); color: var(--text); }
 .form-group { margin-bottom: 16px !important; }
