@@ -215,6 +215,19 @@ select.form-control option { background: var(--surface-solid); color: var(--text
 @keyframes vmp-drop-in { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
 .dropdown-menu a, .dropdown-item { color: var(--text) !important; transition: background-color var(--t-fast) var(--ease) !important; }
 .dropdown-menu a:hover, .dropdown-item:hover { background: rgba(124, 92, 255, 0.14) !important; }
+/* Server pickers: pin the menu under its button with plain CSS anchoring.
+   Popper's JS-computed offsets misplace these menus inside the transformed
+   Nova cards (menu renders detached from the button). Bootstrap still owns
+   open/close/outside-click via .show; these rules only fix WHERE it opens. */
+.server-picker { position: relative; }
+.server-picker > .dropdown-menu.show {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  left: 0 !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+}
 
 /* ---------- pagination ---------- */
 .pagination .page-link { background: var(--surface-2) !important; border: 1px solid var(--line) !important; color: var(--text) !important; border-radius: 10px !important; margin: 0 3px; transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease) !important; min-width: 38px; text-align: center; font-family: var(--font-mono); }

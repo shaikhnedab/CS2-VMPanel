@@ -230,6 +230,26 @@ async function main() {
     const executable = sql001.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
     assert.ok(!/IF NOT EXISTS/i.test(executable), '001 must parse on MySQL');
   });
+  await ok('migration 003 backfills server columns, one ADD per statement', () => {
+    const sql003 = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '003_legacy_server_columns.sql'), 'utf8');
+    const stmts = sql003.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+      .split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+    assert.ok(stmts.length >= 5, '003 covers the panel-managed server columns');
+    for (const s of stmts) {
+      assert.ok(/^ALTER TABLE `\w+` ADD COLUMN `\w+`/.test(s), `single portable ADD COLUMN, got: ${s.slice(0, 60)}`);
+      assert.ok(!/IF NOT EXISTS/i.test(s), 'MySQL has no ADD COLUMN IF NOT EXISTS');
+    }
+    assert.ok(stmts.some((s) => s.includes('`server_rcon_pass`')), '003 repairs the reported rcon column');
+  });
+  await ok('server-picker dropdowns are CSS-anchored under their buttons', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
+    assert.ok(css.includes('.server-picker > .dropdown-menu.show'), 'anchor rule present');
+    assert.ok(/\.server-picker > \.dropdown-menu\.show\s*\{[^}]*transform:\s*none !important/.test(css), 'Popper offsets neutralized');
+    for (const view of ['ManageVIP.ejs', 'ManageAdmin.ejs']) {
+      const html = fs.readFileSync(path.join(__dirname, '..', 'views', view), 'utf8');
+      assert.ok(html.includes('dropdown server-picker'), `${view} marks its picker`);
+    }
+  });
   await ok('runMigrations tolerates already-exists errors, fails others', async () => {
     const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
     const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });
