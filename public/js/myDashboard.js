@@ -60,7 +60,8 @@ function vmpVerifyGiftRecipient() {
         return;
       }
       var r = response.data.res;
-      window.vmpGift.recipientSteamId = r.steamId;
+      var rid64 = r.steamId64 || r.steamId;
+      window.vmpGift.recipientSteamId = rid64;
       window.vmpGift.verifiedFor = raw;
       var prev = document.getElementById('vmpGiftReceiverPreview');
       if (prev) {
@@ -71,7 +72,7 @@ function vmpVerifyGiftRecipient() {
           + avatar
           + '<div style="min-width:0"><p class="eyebrow">Verified receiver</p>'
           + '<h4 class="card-title truncate" style="margin:0" title="' + escHtml(r.personaName) + '">' + escHtml(r.personaName) + '</h4>'
-          + '<code class="mono" translate="no">' + escHtml(r.steamId) + '</code></div>'
+          + '<code class="mono" translate="no">' + escHtml(rid64) + '</code></div>'
           + '<span class="vmp-badge ok" style="margin-left:auto"><span class="vmp-dot" aria-hidden="true"></span>Verified</span>'
           + '</div></div>';
         prev.style.display = '';

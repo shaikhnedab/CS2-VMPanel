@@ -157,6 +157,14 @@ async function main() {
     const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'steamIdFinder.js'), 'utf8');
     assert.ok(js.includes('response.success !== true'), 'checks success flag before parsing');
   });
+  await ok('lookup autofill and gift badge show 64-bit ids', () => {
+    const finder = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'steamIdFinder.js'), 'utf8');
+    assert.ok(/let finalSteamID = steamID64;/.test(finder), 'autofill uses raw 64-bit id');
+    assert.ok(!/finalSteamID = SteamIDConverter\.toSteamID\(/.test(finder), 'no STEAM_ downgrade on fill');
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
+    assert.ok(dash.includes('recipientSteamId = rid64'), 'gift submits verified 64-bit id');
+    assert.ok(dash.includes('escHtml(rid64)'), 'gift badge displays 64-bit id');
+  });
   await ok('validation accepts a good body', () => {
     const { errors } = validateInstallBody(good());
     assert.deepStrictEqual(errors, []);

@@ -77,7 +77,9 @@ function profileUrlToDataFetcher(profileUrl) {
         if (privacyState === "public") {
 
           let finalName = realName + " - (" + (userName ? userName : "-_-") + ")"
-          let finalSteamID = SteamIDConverter.toSteamID(steamID64);
+          // Forms take the 64-bit ID (what the game plugin expects); the
+          // server canonicalizes any format on submit regardless.
+          let finalSteamID = steamID64;
 
           $("#divForLoader").html("")
           $('#steamId_add').val(finalSteamID);
