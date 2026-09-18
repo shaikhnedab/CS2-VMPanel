@@ -30,6 +30,7 @@ config.db = {
   db_name: process.env.DB_NAME || (rawConfig.db && rawConfig.db.db_name),
 };
 config.hostname = process.env.HOSTNAME || rawConfig.hostname || 'localhost';
+config.publicBaseUrl = process.env.PUBLIC_BASE_URL || rawConfig.publicBaseUrl || '';
 config.serverPort = process.env.SERVER_PORT || process.env.PORT || rawConfig.serverPort || '3535';
 config.apacheProxy = envBool(process.env.APACHE_PROXY, !!rawConfig.apacheProxy);
 config.scheduleConfig = {
@@ -123,6 +124,7 @@ function applyEnv(cfg) {
     db_name: process.env.DB_NAME || (rc.db && rc.db.db_name),
   };
   cfg.hostname = process.env.HOSTNAME || rc.hostname || 'localhost';
+  cfg.publicBaseUrl = process.env.PUBLIC_BASE_URL || rc.publicBaseUrl || '';
   cfg.serverPort = process.env.SERVER_PORT || process.env.PORT || rc.serverPort || '3535';
   cfg.apacheProxy = envBool(process.env.APACHE_PROXY, !!rc.apacheProxy);
   cfg.scheduleConfig = {

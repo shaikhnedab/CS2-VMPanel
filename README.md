@@ -99,8 +99,9 @@ Start the panel with **no `.env`** (or `SETUP_COMPLETE=false`):
    ![Install connection error](Screen_Shots/00-install-error.jpg)
 
 3. Pick the super-admin username (3–32 chars) + password (min 8 chars,
-   confirmed), add an optional Steam API key, and press
-   **Install & continue**.
+   confirmed), add an optional Steam API key, and optionally the panel's
+   public address (used for Steam login callbacks — leave empty to
+   auto-detect), then press **Install & continue**.
 4. The panel re-tests the connection, writes `.env` (mode `0600`),
    creates tables, runs migrations, creates the super-admin (bcrypt cost 12),
    flips `SETUP_COMPLETE=true`, and redirects to `/login`. The container
@@ -125,6 +126,7 @@ Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/
 | `JWT_SECRET` `APP_SESSION_SECRET` | yes | Auth/session signing (≥32 random chars) |
 | `STEAM_API_KEY` | for player login | Steam Web API key |
 | `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | `true` behind nginx/Apache (trusts `X-Forwarded-Proto`; cookies are `Secure` automatically on HTTPS). Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
+| `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks (e.g. `https://vip.example.com`). Asked by the install wizard; empty = auto-detect from each request |
 | `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |

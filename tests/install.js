@@ -74,14 +74,61 @@ async function main() {
   // ---- 1b. Steam OpenID + profile lookup (no network) ----
   await ok('steam OpenID URLs follow the request host, not static config', () => {
     const { steamBaseUrl, steamReturnUrl, steamRealm, buildSteamStrategy } = require('../app/utils/steamOpenId');
-    const req = { protocol: 'http', get: (h) => (h === 'host' ? 'base.kebabnation.xyz:3535' : undefined) };
-    assert.strictEqual(steamBaseUrl(req), 'http://base.kebabnation.xyz:3535');
-    assert.strictEqual(steamReturnUrl(req), 'http://base.kebabnation.xyz:3535/auth/steam/return');
-    assert.strictEqual(steamRealm(req), 'http://base.kebabnation.xyz:3535/');
+    const req = { protocol: 'http', get: (h) => (h === 'host' ? 'panel.example.com:3535' : undefined) };
+    assert.strictEqual(steamBaseUrl(req), 'http://panel.example.com:3535');
+    assert.strictEqual(steamReturnUrl(req), 'http://panel.example.com:3535/auth/steam/return');
+    assert.strictEqual(steamRealm(req), 'http://panel.example.com:3535/');
     const tls = { protocol: 'https', get: () => 'vip.example.com' };
     assert.strictEqual(steamReturnUrl(tls), 'https://vip.example.com/auth/steam/return');
     assert.strictEqual(steamBaseUrl({}), 'http://localhost');
     assert.strictEqual(buildSteamStrategy('http://h:3535/auth/steam/return', 'http://h:3535/', '').name, 'steam');
+  });
+  await ok('public base URL normalizer accepts host forms, rejects the rest', () => {
+    const { normalizePublicBaseUrl } = require('../app/utils/steamOpenId');
+    assert.strictEqual(normalizePublicBaseUrl('https://vip.example.com/'), 'https://vip.example.com');
+    assert.strictEqual(normalizePublicBaseUrl('http://host:3535'), 'http://host:3535');
+    assert.strictEqual(normalizePublicBaseUrl('vip.example.com'), 'http://vip.example.com');
+    assert.strictEqual(normalizePublicBaseUrl('  https://h.example/  '), 'https://h.example');
+    for (const bad of ['', null, undefined, 'ftp://h', 'https://h/path', 'https://h?q=1', 'https://h#x', 'http://user@h', 'javascript:alert(1)', 'not a host!!', 'x'.repeat(300)]) {
+      assert.strictEqual(normalizePublicBaseUrl(bad), null, `rejects: ${String(bad).slice(0, 30)}`);
+    }
+  });
+  await ok('explicit PUBLIC_BASE_URL wins, invalid falls back to request', () => {
+    const config = require('../app/config');
+    const { steamBaseUrl, steamReturnUrl } = require('../app/utils/steamOpenId');
+    const saved = config.publicBaseUrl;
+    const req = { protocol: 'http', get: () => 'other.example.com:3535' };
+    try {
+      config.publicBaseUrl = 'https://vip.example.com/';
+      assert.strictEqual(steamBaseUrl(req), 'https://vip.example.com');
+      assert.strictEqual(steamReturnUrl(req), 'https://vip.example.com/auth/steam/return');
+      config.publicBaseUrl = 'https://evil.example/pwn';
+      assert.strictEqual(steamBaseUrl(req), 'http://other.example.com:3535');
+      config.publicBaseUrl = '';
+      assert.strictEqual(steamBaseUrl(req), 'http://other.example.com:3535');
+    } finally {
+      config.publicBaseUrl = saved;
+    }
+  });
+  await ok('wizard validation accepts/normalizes/rejects public address', () => {
+    const { validateInstallBody } = install;
+    const good = () => ({
+      db_host: 'h', db_port: '3306', db_user: 'u', db_password: 'p', db_name: 'd',
+      admin_username: 'owner', admin_password: 'twelve-chars-minimum!',
+      admin_password_confirm: 'twelve-chars-minimum!', steam_api_key: '', public_base_url: '',
+    });
+    let r = validateInstallBody(good());
+    assert.deepStrictEqual(r.errors, []);
+    assert.strictEqual(r.values.publicBaseUrl, '');
+    const withUrl = good(); withUrl.public_base_url = 'https://vip.example.com/';
+    r = validateInstallBody(withUrl);
+    assert.deepStrictEqual(r.errors, []);
+    assert.strictEqual(r.values.publicBaseUrl, 'https://vip.example.com');
+    for (const bad of ['ftp://h', 'https://h/path?q=1', 'not a host!!']) {
+      const b = good(); b.public_base_url = bad;
+      const rb = validateInstallBody(b);
+      assert.ok(rb.errors.some((e) => /Public address/i.test(e)), `rejects ${bad}`);
+    }
   });
   await ok('steam getProfile rejects junk input without network', async () => {
     const Steam = require('../app/modules/steam');

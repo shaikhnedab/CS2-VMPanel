@@ -29,7 +29,7 @@ const session = require('express-session');
 const passport = require('passport');
 const cors = require('cors');
 const crypto = require('crypto');
-const { buildSteamStrategy } = require('./app/utils/steamOpenId');
+const { buildSteamStrategy, normalizePublicBaseUrl } = require('./app/utils/steamOpenId');
 
 const requestMiddleware = require('./app/middleWares/request');
 const requestLogger = require('./app/middleWares/requestLogger');
@@ -54,10 +54,12 @@ passport.deserializeUser(function (obj, done) {
 
 // Boot-time placeholder only: both /auth/steam routes rebuild the strategy
 // per request (see app/routes/router.js) so realm/returnURL always match the
-// address the browser actually used.
+// configured PUBLIC_BASE_URL or, when empty, the address the browser used.
+const bootSteamBase = normalizePublicBaseUrl(config.publicBaseUrl)
+  || ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort));
 passport.use(buildSteamStrategy(
-  ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/auth/steam/return',
-  ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/',
+  bootSteamBase + '/auth/steam/return',
+  bootSteamBase + '/',
   config.steam_api_key
 ));
 

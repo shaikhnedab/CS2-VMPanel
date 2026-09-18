@@ -62,6 +62,7 @@ function validateInstallBody(body) {
   v.adminPassword = body && body.admin_password !== undefined ? String(body.admin_password) : '';
   v.adminPasswordConfirm = body && body.admin_password_confirm !== undefined ? String(body.admin_password_confirm) : '';
   v.steamApiKey = String((body && body.steam_api_key) || '').trim();
+  v.publicBaseUrl = String((body && body.public_base_url) || '').trim();
 
   const hostErr = fieldError(v.dbHost, 'Database host');
   if (hostErr) errors.push(hostErr);
@@ -86,6 +87,16 @@ function validateInstallBody(body) {
   if (v.adminPassword !== v.adminPasswordConfirm) errors.push('Passwords do not match');
 
   if (v.steamApiKey && !STEAM_KEY_RE.test(v.steamApiKey)) errors.push('Steam API key looks invalid');
+
+  if (v.publicBaseUrl) {
+    const { normalizePublicBaseUrl } = require('../utils/steamOpenId');
+    const normalized = normalizePublicBaseUrl(v.publicBaseUrl);
+    if (!normalized) {
+      errors.push('Public address must be like https://vip.example.com or http://host:3535 (no path)');
+    } else {
+      v.publicBaseUrl = normalized;
+    }
+  }
 
   v.dbPortNum = port;
   return { errors, values: v };
@@ -145,7 +156,7 @@ function registerInstallRoutes(app) {
     if (isComplete()) return res.status(404).render('404');
     return res.render('Install', {
       error: null,
-      values: { db_host: '', db_port: '3306', db_user: '', db_name: '', admin_username: '', steam_api_key: '' },
+      values: { db_host: '', db_port: '3306', db_user: '', db_name: '', admin_username: '', steam_api_key: '', public_base_url: '' },
       csrfToken: mintInstallToken(),
     });
   });
@@ -219,6 +230,7 @@ function registerInstallRoutes(app) {
         JWT_SECRET: envWriter.generateSecret(32),
         APP_SESSION_SECRET: envWriter.generateSecret(32),
         STEAM_API_KEY: values.steamApiKey,
+        ...(values.publicBaseUrl ? { PUBLIC_BASE_URL: values.publicBaseUrl } : {}),
         SETUP_COMPLETE: 'false',
       });
       config.reload();
@@ -282,6 +294,7 @@ function safeValues(body) {
     db_name: String(b.db_name || ''),
     admin_username: String(b.admin_username || ''),
     steam_api_key: String(b.steam_api_key || ''),
+    public_base_url: String(b.public_base_url || ''),
   };
 }
 

@@ -77,6 +77,10 @@ button{cursor:pointer;border-radius:10px;font-size:14px;font-weight:600;padding:
           <label for="steam_api_key">Steam API key (optional)</label>
           <input id="steam_api_key" name="steam_api_key" value="<%= (typeof values !== 'undefined' && values.steam_api_key) || '' %>" placeholder="Leave empty to disable Steam login" autocomplete="off">
         </div>
+        <div class="field full">
+          <label for="public_base_url">Public address (optional)</label>
+          <input id="public_base_url" name="public_base_url" value="<%= (typeof values !== 'undefined' && values.public_base_url) || '' %>" placeholder="https://vip.example.com — Steam login callbacks; empty = auto-detect" autocomplete="off">
+        </div>
         <div class="field">
           <label for="admin_password">Admin password (min 8 chars)</label>
           <input id="admin_password" name="admin_password" type="password" required minlength="8" placeholder="••••••••" autocomplete="new-password">
