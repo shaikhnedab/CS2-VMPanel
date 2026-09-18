@@ -370,6 +370,14 @@ async function main() {
       assert.ok(err && !/RCON refresh command/i.test(err), `passes validation: ${String(good)}`);
     }
   });
+  await ok('server refresh command inputs default to css_viprefresh', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'views', 'PanelSetting.ejs'), 'utf8');
+    for (const id of ['servertableRCONCmd_add', 'servertableRCONCmd_update']) {
+      assert.ok(new RegExp(`id="${id}"[^>]*value="css_viprefresh"`).test(html), `${id} pre-filled`);
+    }
+    const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'PanelSettings.js'), 'utf8');
+    assert.ok(js.includes(`rcon_refresh_cmd || 'css_viprefresh'`), 'update prefill falls back to default');
+  });
   await ok('runMigrations tolerates already-exists errors, fails others', async () => {
     const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
     const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });

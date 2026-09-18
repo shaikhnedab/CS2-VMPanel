@@ -772,7 +772,7 @@ $(document).ready(function () {
           $('#servertableIP_update').val(serverData.server_ip)
           $('#servertablePort_update').val(serverData.server_port)
           $('#servertableRCON_update').val(serverData.server_rcon_pass)
-          $('#servertableRCONCmd_update').val(serverData.rcon_refresh_cmd || '')
+          $('#servertableRCONCmd_update').val(serverData.rcon_refresh_cmd || 'css_viprefresh')
           $('#servertableTotalVIPSlots_update').val(serverData.vip_slots)
           $('#servertableVIPPrice_update').val(serverData.vip_price)
           // $('#servertableCurrency_update').val(serverData.vip_currency)
