@@ -30,7 +30,7 @@ const payUConfig = config.payment_gateways.payU
 exports.initPayUPayment = async (req, res) => {
   try {
     const secKey = req.session.passport.user.id
-    let result = await initPayUPaymentFunc(req.body, req.user, secKey);
+    let result = await initPayUPaymentFunc(req.body, req.user, secKey, req);
 
     res.json({
       success: true,
@@ -49,7 +49,7 @@ exports.initPayUPayment = async (req, res) => {
   }
 }
 
-const initPayUPaymentFunc = (reqBody, reqUser, secKey) => {
+const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
   return new Promise(async (resolve, reject) => {
     try {
 
@@ -59,8 +59,13 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey) => {
       let productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")
 
       let txnID = createTXNid()
-      let successURL = ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/txnsuccesspayu'
-      let errorURL = ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/txnerrorpayu'
+      // PayU return URLs follow the configured PUBLIC_BASE_URL, else the
+      // address the buyer actually used (never a static HOSTNAME, and https
+      // aware behind a TLS proxy). The panel must be publicly reachable.
+      const { resolveBaseUrl } = require('../utils/publicUrl');
+      const base = resolveBaseUrl(req);
+      let successURL = base + '/txnsuccesspayu'
+      let errorURL = base + '/txnerrorpayu'
 
       let crypt = crypto.createHash('sha512');
       let text = payUConfig.merchantKey + '|' + txnID + '|' + productData.vip_price + '|' + productInfo + '|' + reqBody.userFirstName + '|' + reqBody.userEmail + '|||||' + steamId + '||||||' + payUConfig.merchantSalt;

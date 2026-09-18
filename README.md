@@ -155,8 +155,9 @@ Client ID is set (charged in the platform currency).
    `PAYU_MERCHANT_SALT=…`; Platform Currency must be `INR`.
 3. Test with PayU's test cards — the checkout opens purple (test) vs green (live).
 4. Go live: `PAYU_ENV=live` plus the Live Key + Salt.
-Note: PayU return URLs are built from your public address, so the panel must
-be publicly reachable or test payments cannot return.
+Note: PayU return URLs follow `PUBLIC_BASE_URL` when set, else the address
+the buyer used (https-aware behind a proxy) — the panel must be publicly
+reachable or test payments cannot return.
 
 #### Razorpay (INR only)
 

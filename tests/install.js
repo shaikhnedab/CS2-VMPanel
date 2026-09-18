@@ -110,6 +110,29 @@ async function main() {
       config.publicBaseUrl = saved;
     }
   });
+  await ok('payU callbacks follow explicit base, else request host', async () => {
+    const config = require('../app/config');
+    const { initPayUPaymentFunc } = require('../app/controllers/payU');
+    const saved = config.publicBaseUrl;
+    const reqOf = (proto, host) => ({ protocol: proto, get: (h) => (h === 'host' ? host : undefined) });
+    const formBody = {
+      serverData: { vip_days: 30, server_name: 'S', vip_price: 100 },
+      type: 'newPurchase', userFirstName: 'T', userEmail: 't@e.com', userMobile: '1',
+    };
+    try {
+      config.publicBaseUrl = 'https://vip.example.com/';
+      let r = await initPayUPaymentFunc(formBody, { id: '76561198092023766' }, 'k', reqOf('http', 'other.example:3535'));
+      assert.strictEqual(r.surl, 'https://vip.example.com/txnsuccesspayu');
+      assert.strictEqual(r.furl, 'https://vip.example.com/txnerrorpayu');
+      config.publicBaseUrl = '';
+      r = await initPayUPaymentFunc(formBody, { id: '76561198092023766' }, 'k', reqOf('http', 'panel.example.com:3535'));
+      assert.strictEqual(r.surl, 'http://panel.example.com:3535/txnsuccesspayu');
+      assert.strictEqual(r.furl, 'http://panel.example.com:3535/txnerrorpayu');
+      assert.ok(!/undefined|localhost/.test(r.surl), 'no placeholder host leaks');
+    } finally {
+      config.publicBaseUrl = saved;
+    }
+  });
   await ok('wizard validation accepts/normalizes/rejects public address', () => {
     const { validateInstallBody } = install;
     const good = () => ({
