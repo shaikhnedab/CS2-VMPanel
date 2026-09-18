@@ -60,7 +60,7 @@ const addPanelServerFunc = (reqBody, username) => {
       if (!reqBody.servername) return reject("Operation Fail!, Server Name is not provided");
       // Optional per-server RCON refresh command (e.g. `fake_rcon css_viprefresh`
       // for CS2 servers behind the fake-rcon bridge). Null/blank = legacy
-      // `sm_vipRefresh` default. Strict charset: the string is sent verbatim
+      // `css_viprefresh` default. Strict charset: the string is sent verbatim
       // over RCON, so shell metacharacters are rejected outright.
       if (reqBody.serverrconcmd === undefined || reqBody.serverrconcmd === null || String(reqBody.serverrconcmd).trim() === '') {
         reqBody.serverrconcmd = null;

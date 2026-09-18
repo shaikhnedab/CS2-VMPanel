@@ -347,11 +347,12 @@ async function main() {
   });
   await ok('refresh command resolves per server, legacy default otherwise', () => {
     const { refreshCommandFor, DEFAULT_REFRESH_CMD } = require('../app/utils/refreshCFGInServer');
-    assert.strictEqual(DEFAULT_REFRESH_CMD, 'sm_vipRefresh');
+    assert.strictEqual(DEFAULT_REFRESH_CMD, 'css_viprefresh');
     assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: 'fake_rcon css_viprefresh' }), 'fake_rcon css_viprefresh');
-    assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: '  sm_vipRefresh  ' }), 'sm_vipRefresh');
+    assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: 'sm_vipRefresh' }), 'sm_vipRefresh');
+    assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: '  css_viprefresh  ' }), 'css_viprefresh');
     for (const missing of [{}, { rcon_refresh_cmd: null }, { rcon_refresh_cmd: '' }, { rcon_refresh_cmd: '   ' }, null, undefined]) {
-      assert.strictEqual(refreshCommandFor(missing), 'sm_vipRefresh');
+      assert.strictEqual(refreshCommandFor(missing), 'css_viprefresh');
     }
   });
   await ok('server add/update rejects unsafe refresh commands before DB', async () => {

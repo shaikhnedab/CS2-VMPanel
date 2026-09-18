@@ -120,9 +120,8 @@ To re-run setup: stop the panel, delete `.env`, start again.
 
 VIP/admin changes push an RCON refresh to every game server automatically
 (`MANUAL REFRESH` replays it on demand). The default command is
-`sm_vipRefresh`; per server you can override it in Panel Settings → server
-forms — e.g. `fake_rcon css_viprefresh` for CS2 servers behind the
-[cs2-fake-rcon](https://github.com/Salvatore-Als/cs2-fake-rcon) bridge.
+`css_viprefresh`; per server you can override it in Panel Settings → server
+forms — e.g. `sm_vipRefresh` for classic SourceMod servers.
 Empty means the default. Only letters, numbers, underscore and spaces
 (max 100 chars) are accepted.
 

@@ -26,7 +26,7 @@ const panelServerModal = require("../models/panelServerModal.js");
 //-----------------------------------------------------------------------------------------------------
 //
 
-const DEFAULT_REFRESH_CMD = 'sm_vipRefresh';
+const DEFAULT_REFRESH_CMD = 'css_viprefresh';
 
 // Per-server refresh command: custom string (e.g. `fake_rcon css_viprefresh`
 // for CS2 servers behind the fake-rcon bridge), legacy default otherwise.
