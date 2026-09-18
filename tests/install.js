@@ -337,6 +337,38 @@ async function main() {
       assert.ok(html.includes('dropdown server-picker'), `${view} marks its picker`);
     }
   });
+  await ok('migration 004 adds per-server rcon refresh command', () => {
+    const sql004 = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '004_server_rcon_refresh_cmd.sql'), 'utf8');
+    const stmts = sql004.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+      .split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+    assert.strictEqual(stmts.length, 1);
+    assert.ok(/^ALTER TABLE `\w+` ADD COLUMN `rcon_refresh_cmd` varchar\(100\)/i.test(stmts[0]), 'single portable ADD COLUMN');
+    assert.ok(/DEFAULT NULL/i.test(stmts[0]), 'NULL default preserves legacy behavior');
+  });
+  await ok('refresh command resolves per server, legacy default otherwise', () => {
+    const { refreshCommandFor, DEFAULT_REFRESH_CMD } = require('../app/utils/refreshCFGInServer');
+    assert.strictEqual(DEFAULT_REFRESH_CMD, 'sm_vipRefresh');
+    assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: 'fake_rcon css_viprefresh' }), 'fake_rcon css_viprefresh');
+    assert.strictEqual(refreshCommandFor({ rcon_refresh_cmd: '  sm_vipRefresh  ' }), 'sm_vipRefresh');
+    for (const missing of [{}, { rcon_refresh_cmd: null }, { rcon_refresh_cmd: '' }, { rcon_refresh_cmd: '   ' }, null, undefined]) {
+      assert.strictEqual(refreshCommandFor(missing), 'sm_vipRefresh');
+    }
+  });
+  await ok('server add/update rejects unsafe refresh commands before DB', async () => {
+    const { addPanelServerFunc } = require('../app/controllers/panelServers');
+    const fails = async (cmd) => addPanelServerFunc({ tablename: 'sv_x', servername: 'X', serverrconcmd: cmd }, 'u')
+      .then(() => null, (e) => String(e));
+    for (const bad of ['sm_vipRefresh; reboot', 'a`b', 'x'.repeat(101), 'cmd$(x)', 'a|b', 'a"b']) {
+      const err = await fails(bad);
+      assert.ok(/RCON refresh command/i.test(err || ''), `rejects: ${String(bad).slice(0, 20)}`);
+    }
+    // Valid + blank commands pass validation (fail later at DB, which is unstubbed here);
+    // stray newlines/tabs are collapsed to spaces, still valid.
+    for (const good of ['fake_rcon css_viprefresh', 'sm_vipRefresh', '', null, 'a\nb']) {
+      const err = await fails(good);
+      assert.ok(err && !/RCON refresh command/i.test(err), `passes validation: ${String(good)}`);
+    }
+  });
   await ok('runMigrations tolerates already-exists errors, fails others', async () => {
     const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
     const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });

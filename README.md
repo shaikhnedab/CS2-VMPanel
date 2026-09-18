@@ -116,6 +116,16 @@ To re-run setup: stop the panel, delete `.env`, start again.
 > gitignored and never committed. `npm run migrate` stays idempotent and
 > no-ops (exit 0) until setup is complete.
 
+### Game server refresh (RCON)
+
+VIP/admin changes push an RCON refresh to every game server automatically
+(`MANUAL REFRESH` replays it on demand). The default command is
+`sm_vipRefresh`; per server you can override it in Panel Settings → server
+forms — e.g. `fake_rcon css_viprefresh` for CS2 servers behind the
+[cs2-fake-rcon](https://github.com/Salvatore-Als/cs2-fake-rcon) bridge.
+Empty means the default. Only letters, numbers, underscore and spaces
+(max 100 chars) are accepted.
+
 Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) (publishes to GHCR on `main`/tags).
 
 ### Environment

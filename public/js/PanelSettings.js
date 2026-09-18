@@ -356,6 +356,7 @@ function addNewPServerajax() {
           "serverip": $('#servertableIP_add').val() ? $('#servertableIP_add').val() : null,
           "serverport": $('#servertablePort_add').val() ? $('#servertablePort_add').val() : null,
           "serverrcon": $('#servertableRCON_add').val() ? $('#servertableRCON_add').val() : null,
+          "serverrconcmd": $('#servertableRCONCmd_add').val() ? $('#servertableRCONCmd_add').val() : null,
           "servertotalvip": $('#servertableTotalVIPSlots_add').val() ? $('#servertableTotalVIPSlots_add').val() : null,
           "servervipprice": $('#servertableVIPPrice_add').val() ? $('#servertableVIPPrice_add').val() : null,
           "servervipcurrency": $('#servertablecurrency').val() ? $('#servertablecurrency').val() : null,
@@ -421,6 +422,7 @@ function updatePServerajax() {
           "serverip": $('#servertableIP_update').val(),
           "serverport": $('#servertablePort_update').val(),
           "serverrcon": $('#servertableRCON_update').val(),
+          "serverrconcmd": $('#servertableRCONCmd_update').val() ? $('#servertableRCONCmd_update').val() : null,
           "servertotalvip": $('#servertableTotalVIPSlots_update').val(),
           "servervipprice": $('#servertableVIPPrice_update').val(),
           "servervipcurrency": $('#servertablecurrency').val(),
@@ -770,6 +772,7 @@ $(document).ready(function () {
           $('#servertableIP_update').val(serverData.server_ip)
           $('#servertablePort_update').val(serverData.server_port)
           $('#servertableRCON_update').val(serverData.server_rcon_pass)
+          $('#servertableRCONCmd_update').val(serverData.rcon_refresh_cmd || '')
           $('#servertableTotalVIPSlots_update').val(serverData.vip_slots)
           $('#servertableVIPPrice_update').val(serverData.vip_price)
           // $('#servertableCurrency_update').val(serverData.vip_currency)

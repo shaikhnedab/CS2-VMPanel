@@ -58,6 +58,19 @@ const addPanelServerFunc = (reqBody, username) => {
       // validation
       if (!reqBody.tablename) return reject("Operation Fail!, Table Name is not provided");
       if (!reqBody.servername) return reject("Operation Fail!, Server Name is not provided");
+      // Optional per-server RCON refresh command (e.g. `fake_rcon css_viprefresh`
+      // for CS2 servers behind the fake-rcon bridge). Null/blank = legacy
+      // `sm_vipRefresh` default. Strict charset: the string is sent verbatim
+      // over RCON, so shell metacharacters are rejected outright.
+      if (reqBody.serverrconcmd === undefined || reqBody.serverrconcmd === null || String(reqBody.serverrconcmd).trim() === '') {
+        reqBody.serverrconcmd = null;
+      } else {
+        const cmd = String(reqBody.serverrconcmd).trim().replace(/\s+/g, ' ');
+        if (!/^[A-Za-z0-9_ ]{1,100}$/.test(cmd)) {
+          return reject("Operation Fail!, RCON refresh command may only contain letters, numbers, underscore and spaces (max 100 chars)");
+        }
+        reqBody.serverrconcmd = cmd;
+      }
 
       let userData = await userModel.getUserDataByUsername(username)
 

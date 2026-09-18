@@ -24,7 +24,18 @@ const SourceQuery = require('sourcequery');
 const panelServerModal = require("../models/panelServerModal.js");
 
 //-----------------------------------------------------------------------------------------------------
-// 
+//
+
+const DEFAULT_REFRESH_CMD = 'sm_vipRefresh';
+
+// Per-server refresh command: custom string (e.g. `fake_rcon css_viprefresh`
+// for CS2 servers behind the fake-rcon bridge), legacy default otherwise.
+// Pure — safe to unit test without RCON.
+const refreshCommandFor = (serverDetails) => {
+  const custom = serverDetails && serverDetails.rcon_refresh_cmd;
+  if (typeof custom === 'string' && custom.trim() !== '') return custom.trim();
+  return DEFAULT_REFRESH_CMD;
+};
 
 const refreshAdminsInServer = (server) => {
   return new Promise(async (resolve, reject) => {
@@ -46,7 +57,9 @@ const refreshAdminsInServer = (server) => {
             var conn = new Rcon(serverDetails.server_ip, serverDetails.server_port, serverDetails.server_rcon_pass);
             conn.on('auth', function () {
               logger.info("*** Rcon Authorized! ***");
-              conn.send("sm_vipRefresh");
+              const refreshCmd = refreshCommandFor(serverDetails);
+              logger.info("*** [RCON] Sending command: " + refreshCmd);
+              conn.send(refreshCmd);
               conn.disconnect();
             }).on('response', function (str) {
               logger.info("*** [RCON] Got response: " + str);
@@ -71,3 +84,5 @@ const refreshAdminsInServer = (server) => {
 }
 
 exports.refreshAdminsInServer = refreshAdminsInServer;
+exports.refreshCommandFor = refreshCommandFor;
+exports.DEFAULT_REFRESH_CMD = DEFAULT_REFRESH_CMD;
