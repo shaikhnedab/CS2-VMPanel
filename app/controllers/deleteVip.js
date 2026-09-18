@@ -21,7 +21,7 @@
 const logger = require('../modules/logger')('Delete VIP controller');
 const vipModel = require("../models/vipModel.js");
 const userModel = require("../models/userModel.js");
-const { refreshAdminsInServer } = require("../utils/refreshCFGInServer")
+const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const { logThisActivity } = require("../utils/activityLogger.js");
 var rconStatus
 
@@ -63,7 +63,7 @@ const deleteVipDataFunc = (reqBody, username) => {
         reqBody.primaryKey = '"' + reqBody.primaryKey + '"'
         let deleteRes = await vipModel.deleteVipByAdmin(reqBody)
         if (deleteRes) {
-          rconStatus = await refreshAdminsInServer(reqBody.tableName);
+          rconStatus = await refreshBestEffort(reqBody.tableName);
           resolve(deleteRes)
         }
       } else {

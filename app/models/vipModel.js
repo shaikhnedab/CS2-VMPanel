@@ -22,7 +22,7 @@
 const logger = require('../modules/logger')('VIP model');
 var db = require('../db/db_bridge');
 const panelServerModal = require("../models/panelServerModal.js");
-const { refreshAdminsInServer } = require("../utils/refreshCFGInServer")
+const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 
   /**
  * Allow-list for dynamic per-server table names (created by the SourceMod plugin).
@@ -208,7 +208,7 @@ var vipDataModel = {
           if (!queryRes) {
             return reject("Error in delete");
           }
-          await refreshAdminsInServer(serverList[i].tbl_name);
+          await refreshBestEffort(serverList[i].tbl_name);
         }
         return resolve(true);
       } catch (error) {

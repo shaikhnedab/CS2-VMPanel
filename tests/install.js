@@ -378,6 +378,59 @@ async function main() {
     const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'PanelSettings.js'), 'utf8');
     assert.ok(js.includes(`rcon_refresh_cmd || 'css_viprefresh'`), 'update prefill falls back to default');
   });
+  await ok('rcon refresh proceeds despite silent query probe, fails soft', async () => {
+    const { EventEmitter } = require('events');
+    const rconPath = require.resolve('rcon');
+    const sqPath = require.resolve('sourcequery');
+    const modelPath = path.join(__dirname, '..', 'app', 'models', 'panelServerModal.js');
+    const saved = {};
+    for (const p of [rconPath, sqPath, modelPath]) saved[p] = require.cache[p];
+    const setStub = (p, exp) => { require.cache[p] = { id: p, filename: p, loaded: true, exports: exp }; };
+    const restore = () => { for (const p of Object.keys(saved)) { if (saved[p]) require.cache[p] = saved[p]; else delete require.cache[p]; } };
+    let sqBehavior = 'ok';
+    let rconMode = 'ok';
+    let modelDetails = null;
+    class FakeQuery {
+      open() { if (sqBehavior === 'throw-open') throw new Error('nope'); }
+      getInfo(cb) { setImmediate(() => (sqBehavior === 'ok' ? cb(null, { name: 'x' }) : cb(new Error('timeout')))); }
+      close() {}
+    }
+    class FakeRcon extends EventEmitter {
+      connect() { setImmediate(() => (rconMode === 'error' ? this.emit('error', new Error('auth fail')) : this.emit('auth'))); }
+      send(cmd) { FakeRcon.lastSent = cmd; setImmediate(() => { this.emit('response', 'ok'); this.emit('end'); }); }
+      disconnect() {}
+    }
+    FakeRcon.lastSent = null;
+    try {
+      setStub(sqPath, function FakeSQ() { return new FakeQuery(); });
+      setStub(rconPath, FakeRcon);
+      setStub(modelPath, { getPanelServerDetails: async () => modelDetails });
+      const util = require('../app/utils/refreshCFGInServer');
+      assert.strictEqual(await util.probeServer('h', 1), true);
+      sqBehavior = 'timeout';
+      assert.strictEqual(await util.probeServer('h', 1), false);
+      sqBehavior = 'throw-open';
+      assert.strictEqual(await util.probeServer('h', 1), false);
+      sqBehavior = 'timeout';
+      await util.sendRconCommand('h', 1, 'p', 'fake_rcon css_viprefresh');
+      assert.strictEqual(FakeRcon.lastSent, 'fake_rcon css_viprefresh');
+      rconMode = 'error';
+      await assert.rejects(() => util.sendRconCommand('h', 1, 'p', 'x'), /RCON failed/);
+      rconMode = 'ok';
+      // Full path, query silent (the reported bug): still refreshes via RCON.
+      modelDetails = { server_ip: 'h', server_port: '1', server_rcon_pass: 'p', rcon_refresh_cmd: null };
+      assert.strictEqual(await util.refreshAdminsInServer('sv_x'), 1);
+      assert.strictEqual(FakeRcon.lastSent, 'css_viprefresh');
+      modelDetails = { server_ip: 'h', server_port: '1', server_rcon_pass: null, rcon_refresh_cmd: null };
+      assert.strictEqual(await util.refreshAdminsInServer('sv_x'), 0);
+      rconMode = 'error';
+      modelDetails = { server_ip: 'h', server_port: '1', server_rcon_pass: 'p', rcon_refresh_cmd: null };
+      await assert.rejects(() => util.refreshAdminsInServer('sv_x'), /RCON password and port/);
+      assert.strictEqual(await util.refreshBestEffort('sv_x'), 0, 'best-effort never rejects');
+    } finally {
+      restore();
+    }
+  });
   await ok('runMigrations tolerates already-exists errors, fails others', async () => {
     const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
     const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });

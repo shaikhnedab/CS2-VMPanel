@@ -19,70 +19,112 @@
 
 "use strict";
 const logger = require('../modules/logger')('refresh CGF');
-const Rcon = require('rcon');
-const SourceQuery = require('sourcequery');
-const panelServerModal = require("../models/panelServerModal.js");
 
 //-----------------------------------------------------------------------------------------------------
 //
 
 const DEFAULT_REFRESH_CMD = 'css_viprefresh';
 
-// Per-server refresh command: custom string (e.g. `fake_rcon css_viprefresh`
-// for CS2 servers behind the fake-rcon bridge), legacy default otherwise.
-// Pure — safe to unit test without RCON.
+// Per-server refresh command: custom string (e.g. `sm_vipRefresh` for classic
+// SourceMod boxes), panel default otherwise. Pure — safe to unit test.
 const refreshCommandFor = (serverDetails) => {
   const custom = serverDetails && serverDetails.rcon_refresh_cmd;
   if (typeof custom === 'string' && custom.trim() !== '') return custom.trim();
   return DEFAULT_REFRESH_CMD;
 };
 
+// Best-effort liveness probe. Never throws, never vetoes: UDP game queries
+// are routinely filtered while RCON works fine, so a silent server must NOT
+// skip the refresh. The RCON handshake itself is the real liveness proof.
+const probeServer = (ip, port) => {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (alive) => { if (!settled) { settled = true; resolve(alive); } };
+    try {
+      const SourceQuery = require('sourcequery');
+      const sq = new SourceQuery(1000); // 1000ms timeout
+      try { sq.open(ip, port); } catch (e) { try { sq.close(); } catch (ce) { /* ignore */ } return done(false); }
+      sq.getInfo((err) => { try { sq.close(); } catch (e) { /* ignore */ } done(!err); });
+      setTimeout(() => { try { sq.close(); } catch (e) { /* ignore */ } done(false); }, 3000);
+    } catch (e) {
+      done(false);
+    }
+  });
+};
+
+// Single RCON round-trip. Resolves on clean disconnect after auth+send,
+// rejects on transport/auth errors. Requires are lazy so tests can stub them.
+const sendRconCommand = (ip, port, pass, cmd) => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    try {
+      const Rcon = require('rcon');
+      const conn = new Rcon(ip, port, pass);
+      conn.on('auth', function () {
+        logger.info('*** Rcon Authorized! ***');
+        logger.info('*** [RCON] Sending command: ' + cmd);
+        conn.send(cmd);
+        conn.disconnect();
+      }).on('response', function (str) {
+        logger.info('*** [RCON] Got response: ' + str);
+      }).on('error', function (error) {
+        logger.error('*** [RCON] Got error: ' + error);
+        if (!settled) { settled = true; reject(new Error('RCON failed — check the server RCON password and port in Panel Settings')); }
+      }).on('end', function () {
+        logger.info('*** [RCON] Socket closed!');
+        if (!settled) { settled = true; resolve(true); }
+      });
+      conn.connect();
+    } catch (e) {
+      if (!settled) { settled = true; reject(e); }
+    }
+  });
+};
+
 const refreshAdminsInServer = (server) => {
   return new Promise(async (resolve, reject) => {
     try {
+      const panelServerModal = require('../models/panelServerModal.js');
+      const serverDetails = await panelServerModal.getPanelServerDetails(server);
 
-      let serverDetails = await panelServerModal.getPanelServerDetails(server)
-
-      if (serverDetails.server_ip && serverDetails.server_port && serverDetails.server_rcon_pass) {
-
-        let sq = new SourceQuery(1000); // 1000ms timeout
-        sq.open(serverDetails.server_ip, serverDetails.server_port);
-        sq.getInfo(function (err, info) {
-          if (err) {
-            sq.close()
-            //return reject("Operation Done in VMPanel Database,\n No Rcon execution, Server is Offline ")
-            return resolve(0)
-          } else {
-            sq.close()
-            var conn = new Rcon(serverDetails.server_ip, serverDetails.server_port, serverDetails.server_rcon_pass);
-            conn.on('auth', function () {
-              logger.info("*** Rcon Authorized! ***");
-              const refreshCmd = refreshCommandFor(serverDetails);
-              logger.info("*** [RCON] Sending command: " + refreshCmd);
-              conn.send(refreshCmd);
-              conn.disconnect();
-            }).on('response', function (str) {
-              logger.info("*** [RCON] Got response: " + str);
-            }).on('error', function (error) {
-              logger.error("*** [RCON] Got error: " + error);
-              return reject("Operation Done in VMPanel Database,\n There was an error while executing rcon Command for current Operation. ")
-            }).on('end', function () {
-              logger.info("*** [RCON] Socket closed!");
-              resolve(1)
-            });
-            conn.connect();
-          }
-        });
-      } else {
-        resolve(0)
+      if (!serverDetails.server_ip || !serverDetails.server_port || !serverDetails.server_rcon_pass) {
+        return resolve(0);
+      }
+      const live = await probeServer(serverDetails.server_ip, serverDetails.server_port);
+      if (!live) logger.info('*** [RCON] Query unanswered — attempting RCON anyway');
+      try {
+        await sendRconCommand(
+          serverDetails.server_ip,
+          serverDetails.server_port,
+          serverDetails.server_rcon_pass,
+          refreshCommandFor(serverDetails)
+        );
+        return resolve(1);
+      } catch (e) {
+        logger.error('error in refreshAdminsInServer->', e);
+        return reject('Operation Done in VMPanel Database,\n RCON failed — check the server RCON password and port in Panel Settings. ');
       }
     } catch (error) {
-      logger.error("error in refreshAdminsInServer->", error)
-      reject("Operation Done in VMPanel Database,\n There was an error while executing rcon Command for current Operation. ")
+      logger.error('error in refreshAdminsInServer->', error);
+      reject('Operation Done in VMPanel Database,\n There was an error while executing rcon Command for current Operation. ');
     }
   });
-}
+};
 
 exports.refreshAdminsInServer = refreshAdminsInServer;
 exports.refreshCommandFor = refreshCommandFor;
+exports.probeServer = probeServer;
+exports.sendRconCommand = sendRconCommand;
 exports.DEFAULT_REFRESH_CMD = DEFAULT_REFRESH_CMD;
+
+// Never rejects: an RCON failure degrades to 0 so database writes (VIP add,
+// purchase, expiry cleanup) survive a dead game server. Controllers report
+// the 0 in their toasts instead of failing the whole operation.
+const refreshBestEffort = async (server) => {
+  try {
+    return await refreshAdminsInServer(server);
+  } catch (e) {
+    return 0;
+  }
+};
+exports.refreshBestEffort = refreshBestEffort;

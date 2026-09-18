@@ -25,7 +25,7 @@ const SteamIDConverter = require('../utils/steamIdConvertor')
 const myDashboardModel = require("../models/myDashboardModel.js");
 const salesModal = require("../models/salesModel.js");
 const vipModel = require("../models/vipModel.js");
-const { refreshAdminsInServer } = require("../utils/refreshCFGInServer")
+const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const { logThisActivity } = require("../utils/activityLogger.js");
 const config = require('../config');
 const paypalClientID = config.payment_gateways.paypal.paypal_client_id
@@ -341,7 +341,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         let insertRes = await vipModel.insertVIPData(newVipInsertObj)
         if (insertRes) {
           for (let i = 0; i < newVipInsertObj.server.length; i++) {
-            await refreshAdminsInServer(newVipInsertObj.server[i]);
+            await refreshBestEffort(newVipInsertObj.server[i]);
           }
           resolve(insertRes)
         }
@@ -357,7 +357,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         let updateRes = await vipModel.updateVIPData(updateVipObj)
         if (updateRes) {
           for (let i = 0; i < updateVipObj.server.length; i++) {
-            refreshAdminsInServer(updateVipObj.server[i]);
+            refreshBestEffort(updateVipObj.server[i]);
           }
           resolve(updateRes)
         }
@@ -392,7 +392,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
             let updateRes = await vipModel.updateVIPData(updateVipObj)
             if (updateRes) {
-              refreshAdminsInServer(bundleServerArray[i]);
+              refreshBestEffort(bundleServerArray[i]);
             }
           } else {
             const newVipInsertObj = {
@@ -407,7 +407,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
             let insertRes = await vipModel.insertVIPData(newVipInsertObj)
             if (insertRes) {
-              await refreshAdminsInServer(bundleServerArray[i]);
+              await refreshBestEffort(bundleServerArray[i]);
             }
           }
         }

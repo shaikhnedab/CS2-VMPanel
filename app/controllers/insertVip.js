@@ -22,7 +22,7 @@ const logger = require('../modules/logger')('Insert VIP controller');
 const vipModel = require("../models/vipModel.js");
 const userModel = require("../models/userModel.js");
 const panelServerModal = require("../models/panelServerModal.js");
-const { refreshAdminsInServer } = require("../utils/refreshCFGInServer")
+const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const { logThisActivity } = require("../utils/activityLogger.js");
 var rconStatus = []
 
@@ -105,8 +105,9 @@ const insertVipDataFunc = (reqBody, username) => {
 
           let insertRes = await vipModel.insertVIPData(reqBody)
           if (insertRes) {
+            rconStatus = [];
             for (let i = 0; i < serverListLength; i++) {
-              let result = await refreshAdminsInServer(serverList[i]);
+              let result = await refreshBestEffort(serverList[i]);
               rconStatus.push(result)
             }
             resolve(insertRes)
@@ -133,8 +134,9 @@ const insertVipDataFunc = (reqBody, username) => {
 
           let updateRes = await vipModel.updateVIPData(reqBody)
           if (updateRes) {
+            rconStatus = [];
             for (let i = 0; i < serverListLength; i++) {
-              let result = await refreshAdminsInServer(serverList[i]);
+              let result = await refreshBestEffort(serverList[i]);
               rconStatus.push(result)
             }
             resolve(updateRes)

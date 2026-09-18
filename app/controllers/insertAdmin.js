@@ -23,7 +23,7 @@ const logger = require('../modules/logger')('Insert Admin Controller');
 const userModel = require("../models/userModel.js");
 const vipModel = require("../models/vipModel.js");
 const panelServerModal = require("../models/panelServerModal.js");
-const { refreshAdminsInServer } = require("../utils/refreshCFGInServer")
+const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const { logThisActivity } = require("../utils/activityLogger.js");
 var rconStatus = []
 
@@ -102,8 +102,9 @@ const insertAdminDataFunc = (reqBody, username) => {
 
           let insertRes = await vipModel.insertVIPData(reqBody)
           if (insertRes) {
+            rconStatus = [];
             for (let i = 0; i < serverListLength; i++) {
-              let result = await refreshAdminsInServer(serverList[i]);
+              let result = await refreshBestEffort(serverList[i]);
               rconStatus.push(result)
             }
             resolve(insertRes)

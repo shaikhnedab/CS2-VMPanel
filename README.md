@@ -123,7 +123,9 @@ VIP/admin changes push an RCON refresh to every game server automatically
 `css_viprefresh`; per server you can override it in Panel Settings → server
 forms — e.g. `sm_vipRefresh` for classic SourceMod servers.
 Empty means the default. Only letters, numbers, underscore and spaces
-(max 100 chars) are accepted.
+(max 100 chars) are accepted. The game-query probe is best-effort only: if a
+server ignores UDP queries the panel still attempts RCON, and an RCON failure
+never rolls back the VIP/admin database write (the toast reports it instead).
 
 Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) (publishes to GHCR on `main`/tags).
 
