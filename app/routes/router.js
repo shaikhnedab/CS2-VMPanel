@@ -24,6 +24,14 @@ module.exports = app => {
   // Middleware Import
   const authMiddleware = require('../middleWares/auth');
   const passport = require('passport');
+  const config = require('../config');
+  const { steamReturnUrl, steamRealm, buildSteamStrategy } = require('../utils/steamOpenId');
+  // Steam OpenID must return to the address the browser actually used, not a
+  // static HOSTNAME (container hostnames, IP:port access, proxies). Rebuild
+  // the strategy per request; the in-flight request holds its own instance.
+  const useRequestSteamStrategy = (req) => {
+    passport.use(buildSteamStrategy(steamReturnUrl(req), steamRealm(req), config.steam_api_key));
+  };
 
   // Controllers Import
   const { dashboard, getVipsDataSingleServer, getAdminsDataSingleServer } = require("../controllers/vipController.js");
@@ -69,12 +77,14 @@ module.exports = app => {
 
   //Private Router only for User (Steam Authorized)
   app.get('/auth/steam',
+    (req, res, next) => { useRequestSteamStrategy(req); return next(); },
     passport.authenticate('steam', { failureRedirect: '/' }),
     function (req, res) {
       res.redirect('/');
     });
 
   app.get('/auth/steam/return',
+    (req, res, next) => { useRequestSteamStrategy(req); return next(); },
     passport.authenticate('steam', { failureRedirect: '/' }),
     function (req, res) {
       res.redirect('/mydashboard');

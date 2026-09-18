@@ -27,9 +27,9 @@ const express = require("express");
 const cron = require('node-cron');
 const session = require('express-session');
 const passport = require('passport');
-const SteamStrategy = require('passport-steam');
 const cors = require('cors');
 const crypto = require('crypto');
+const { buildSteamStrategy } = require('./app/utils/steamOpenId');
 
 const requestMiddleware = require('./app/middleWares/request');
 const requestLogger = require('./app/middleWares/requestLogger');
@@ -52,18 +52,13 @@ passport.deserializeUser(function (obj, done) {
   done(null, obj);
 });
 
-passport.use(new SteamStrategy({
-  returnURL: ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/auth/steam/return',
-  realm: ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/',
-  apiKey: config.steam_api_key
-},
-  function (identifier, profile, done) {
-    // asynchronous verification, for effect...
-    process.nextTick(function () {
-      profile.identifier = identifier;
-      return done(null, profile);
-    });
-  }
+// Boot-time placeholder only: both /auth/steam routes rebuild the strategy
+// per request (see app/routes/router.js) so realm/returnURL always match the
+// address the browser actually used.
+passport.use(buildSteamStrategy(
+  ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/auth/steam/return',
+  ((config.apacheProxy) ? ('http://' + config.hostname) : ('http://' + config.hostname + ':' + config.serverPort)) + '/',
+  config.steam_api_key
 ));
 
 function isCompleteNow() {

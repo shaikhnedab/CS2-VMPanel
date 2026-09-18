@@ -40,8 +40,13 @@ function profileUrlToDataFetcher(profileUrl) {
     })
       .then((res) => { return res.json(); })
       .then((response) => {
-        response = response.data.res
-        const dataArray = response.children
+        try {
+          // Backend failure (bad URL, Steam unreachable) carries success:false
+          // with a friendly message — never parse it as profile XML.
+          if (!response || response.success !== true || !response.data || !response.data.res || !response.data.res.children) {
+            throw new Error((response && response.data && (response.data.error || response.data.message)) || 'Could not fetch Steam profile data.');
+          }
+          const dataArray = response.data.res.children
 
         $("#divForLoader").html("")
 
@@ -84,11 +89,19 @@ function profileUrlToDataFetcher(profileUrl) {
           $("#dp_div").html(`<img src="${dpURL}" alt="Profile Picture">`);
           $("#name_add").focus();
         } else {
+          $("#divForLoader").html("")
           showNotif({
             success: false,
             data: { "error": "Can not fetch user data Profile privacy is " + privacyState }
           })
         }
+      } catch (e) {
+        $("#divForLoader").html("")
+        showNotif({
+          success: false,
+          data: { "error": (e && e.message) || 'Could not fetch Steam profile data.' }
+        })
+      }
       })
       .catch(error => {
         showNotif({ success: false, data: { "error": error } })

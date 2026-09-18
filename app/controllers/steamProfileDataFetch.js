@@ -34,9 +34,14 @@ exports.fetchProfileData = async (req, res) => {
     });
   } catch (error) {
     logger.error("Error fetching user data->", error);
+    // Actor errors are user mistakes with safe, specific guidance — surface
+    // them. Anything else (Steam unreachable, time-outs) gets a generic line.
+    const friendly = (error && error.type === 'actor' && error.desc)
+      ? String(error.desc)
+      : 'Steam did not answer. Check the profile link and try again in a moment.';
     res.json({
       success: false,
-      data: { "error": "Something went Wrong!, Error in Fetching user Data" }
+      data: { "error": friendly }
     });
   }
 };

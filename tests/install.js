@@ -70,6 +70,46 @@ async function main() {
     const future = mintInstallToken(Date.now() + 10 * 60 * 1000);
     assert.strictEqual(verifyInstallToken(future), false);
   });
+
+  // ---- 1b. Steam OpenID + profile lookup (no network) ----
+  await ok('steam OpenID URLs follow the request host, not static config', () => {
+    const { steamBaseUrl, steamReturnUrl, steamRealm, buildSteamStrategy } = require('../app/utils/steamOpenId');
+    const req = { protocol: 'http', get: (h) => (h === 'host' ? 'base.kebabnation.xyz:3535' : undefined) };
+    assert.strictEqual(steamBaseUrl(req), 'http://base.kebabnation.xyz:3535');
+    assert.strictEqual(steamReturnUrl(req), 'http://base.kebabnation.xyz:3535/auth/steam/return');
+    assert.strictEqual(steamRealm(req), 'http://base.kebabnation.xyz:3535/');
+    const tls = { protocol: 'https', get: () => 'vip.example.com' };
+    assert.strictEqual(steamReturnUrl(tls), 'https://vip.example.com/auth/steam/return');
+    assert.strictEqual(steamBaseUrl({}), 'http://localhost');
+    assert.strictEqual(buildSteamStrategy('http://h:3535/auth/steam/return', 'http://h:3535/', '').name, 'steam');
+  });
+  await ok('steam getProfile rejects junk input without network', async () => {
+    const Steam = require('../app/modules/steam');
+    const steam = new Steam();
+    // Rejections are {type:'actor',desc} objects, not Errors — inspect desc.
+    const fails = async (input) => steam.getProfile(input).then(() => null, (e) => e);
+    assert.ok(/profile link/i.test((await fails('not a steam link!!!') || {}).desc || ''));
+    assert.ok(/Enter a Steam profile/i.test((await fails('') || {}).desc || ''));
+    assert.ok(/Enter a Steam profile/i.test((await fails(null) || {}).desc || ''));
+  });
+  await ok('steam getProfile explains missing API key for bare names', async () => {
+    if (require('../app/config').steam_api_key) return; // real key: would hit network, skip
+    delete process.env.STEAM_API_KEY;
+    const Steam = require('../app/modules/steam');
+    const err = await new Steam().getProfile('somevanityname').then(() => null, (e) => e);
+    assert.ok(/API key/i.test((err || {}).desc || ''));
+  });
+  await ok('profile lookup maps bad URLs to friendly errors', async () => {
+    const { fetchProfileData } = require('../app/controllers/steamProfileDataFetch');
+    let payload = null;
+    await fetchProfileData({ body: { profileUrl: 'not a steam link!!!' } }, { json: (o) => { payload = o; } });
+    assert.strictEqual(payload.success, false);
+    assert.ok(/profile link|profile URL/i.test(payload.data.error), `friendly message, got: ${payload.data.error}`);
+  });
+  await ok('profile lookup frontend guards error responses', () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'steamIdFinder.js'), 'utf8');
+    assert.ok(js.includes('response.success !== true'), 'checks success flag before parsing');
+  });
   await ok('validation accepts a good body', () => {
     const { errors } = validateInstallBody(good());
     assert.deepStrictEqual(errors, []);
