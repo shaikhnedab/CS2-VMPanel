@@ -23,6 +23,16 @@ const vipModel = require("../models/vipModel.js");
 const userModel = require("../models/userModel.js");
 const panelServerModal = require("../models/panelServerModal.js");
 const { refreshBestEffort } = require("../utils/refreshCFGInServer")
+const SteamIDConverter = require('../utils/steamIdConvertor')
+// Store canonical 64-bit authId whatever the admin pastes (STEAM_, 64, ID3).
+// Throws with a user-facing message; callers turn it into a toast rejection.
+const canonVipSteamId = (raw) => {
+  try {
+    return '"' + SteamIDConverter.toCanonical64(raw) + '"';
+  } catch (e) {
+    throw "Operation Fail!, Invalid Steam ID — use STEAM_1:0:123456, [U:1:123456] or 7656119…";
+  }
+};
 const { logThisActivity } = require("../utils/activityLogger.js");
 var rconStatus = []
 
@@ -100,7 +110,9 @@ const insertVipDataFunc = (reqBody, username) => {
 
           reqBody.day = epochTillExpiry(reqBody.day);
           reqBody.name = "//" + reqBody.name;
-          reqBody.steamId = '"' + reqBody.steamId + '"';
+          try {
+            reqBody.steamId = canonVipSteamId(reqBody.steamId);
+          } catch (e) { return reject(e); }
           reqBody.userType = 0;
 
           let insertRes = await vipModel.insertVIPData(reqBody)
@@ -130,7 +142,9 @@ const insertVipDataFunc = (reqBody, username) => {
           }
 
           reqBody.day = Math.floor(reqBody.day * 86400);
-          reqBody.steamId = '"' + reqBody.steamId + '"';
+          try {
+            reqBody.steamId = canonVipSteamId(reqBody.steamId);
+          } catch (e) { return reject(e); }
 
           let updateRes = await vipModel.updateVIPData(reqBody)
           if (updateRes) {

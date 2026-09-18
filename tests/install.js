@@ -431,6 +431,58 @@ async function main() {
       restore();
     }
   });
+  await ok('steam ids canonicalize to 64-bit', () => {
+    const C = require('../app/utils/steamIdConvertor');
+    assert.strictEqual(C.toCanonical64('76561198092023766'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('STEAM_1:0:65879019'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('STEAM_0:0:65879019'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('[U:1:131758038]'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('  "76561198092023766"  '), '76561198092023766');
+    for (const bad of ['', null, undefined, 'abc', '123', 'STEAM_9:9:9', 'STEAM_1:0:abc']) {
+      assert.throws(() => C.toCanonical64(bad), TypeError);
+    }
+    assert.deepStrictEqual(C.quotedAuthIdVariants('STEAM_1:0:65879019'), ['"76561198092023766"', '"STEAM_1:0:65879019"']);
+  });
+  await ok('admin vip add stores canonical 64-bit authId', async () => {
+    const { EventEmitter } = require('events');
+    const mod = (p) => path.join(__dirname, '..', 'app', p);
+    const ctrlPath = mod('controllers/insertVip.js');
+    const deps = [ctrlPath, mod('models/userModel.js'), mod('models/panelServerModal.js'), mod('models/vipModel.js'), require.resolve('rcon'), require.resolve('sourcequery')];
+    const saved = {};
+    for (const p of deps) saved[p] = require.cache[p];
+    const setStub = (p, exp) => { require.cache[p] = { id: p, filename: p, loaded: true, exports: exp }; };
+    const restore = () => {
+      for (const p of Object.keys(saved)) { if (saved[p]) require.cache[p] = saved[p]; else delete require.cache[p]; }
+      delete require.cache[ctrlPath];
+    };
+    let inserted = null;
+    class FakeRcon extends EventEmitter {
+      connect() { setImmediate(() => this.emit('auth')); }
+      send() { setImmediate(() => { this.emit('response', 'ok'); this.emit('end'); }); }
+      disconnect() {}
+    }
+    class FakeQ { open() {} getInfo(cb) { setImmediate(() => cb(null, {})); } close() {} }
+    try {
+      setStub(mod('models/userModel.js'), { getUserDataByUsername: async () => ({ sec_key: 'k' }) });
+      setStub(mod('models/panelServerModal.js'), {
+        getPanelServersDisplayList: async () => [{ tbl_name: 'sv_x' }],
+        getPanelServerDetails: async () => ({ server_ip: 'h', server_port: '1', server_rcon_pass: 'p', rcon_refresh_cmd: null }),
+      });
+      setStub(mod('models/vipModel.js'), { insertVIPData: async (o) => { inserted = o; return true; } });
+      setStub(require.resolve('rcon'), FakeRcon);
+      setStub(require.resolve('sourcequery'), function FakeSQ() { return new FakeQ(); });
+      delete require.cache[ctrlPath];
+      const { insertVipDataFunc } = require('../app/controllers/insertVip.js');
+      await insertVipDataFunc({ secKey: 'k', submit: 'insert', steamId: 'STEAM_1:0:65879019', name: 'T', flag: 'a', day: 1, server: ['sv_x'] }, 'u');
+      assert.strictEqual(inserted.steamId, '"76561198092023766"');
+      inserted = 'untouched';
+      await insertVipDataFunc({ secKey: 'k', submit: 'insert', steamId: 'not-an-id!!!', name: 'T', flag: 'a', day: 1, server: ['sv_x'] }, 'u')
+        .then(() => { throw new Error('should reject'); }, (e) => assert.ok(/Invalid Steam ID/i.test(String(e))));
+      assert.strictEqual(inserted, 'untouched');
+    } finally {
+      restore();
+    }
+  });
   await ok('runMigrations tolerates already-exists errors, fails others', async () => {
     const dupKey = Object.assign(new Error('dup'), { code: 'ER_DUP_KEYNAME', errno: 1061 });
     const dupField = Object.assign(new Error('dup'), { code: 'ER_DUP_FIELDNAME', errno: 1060 });

@@ -24,6 +24,7 @@ const TABLE_NAME_RE = /^[A-Za-z0-9_]{1,64}$/;
 
 var db = require('../db/db_bridge');
 const panelServerModal = require("./panelServerModal.js");
+const SteamIDConverter = require("../utils/steamIdConvertor");
 const config = require('../config');
 const salestable = config.salestable
 const serverTable = config.serverTable
@@ -43,6 +44,8 @@ var myDashboardModel = {
         let finalResult = []
         let serverList = await panelServerModal.getPanelServersDisplayList();
 
+        // Match 64-bit and legacy STEAM_ rows alike (callers pass either form).
+        const matchIds = SteamIDConverter.quotedAuthIdVariants(steamId);
         for (let i = 0; i < serverList.length; i++) {
           if (!TABLE_NAME_RE.test(serverList[i].tbl_name)) continue;
           let query = db.queryFormat(`SELECT authId,
@@ -50,7 +53,7 @@ var myDashboardModel = {
                                              expireStamp,
                                              created_at,
                                              type 
-                                      FROM ${serverList[i].tbl_name} WHERE authId = ?`, [steamId]);
+                                      FROM ${serverList[i].tbl_name} WHERE authId IN (?)`, [matchIds]);
           let queryRes = await db.query(query);
           if (!queryRes) {
             return reject("No Data Found");

@@ -23,6 +23,13 @@ const logger = require('../modules/logger')('VIP model');
 var db = require('../db/db_bridge');
 const panelServerModal = require("../models/panelServerModal.js");
 const { refreshBestEffort } = require("../utils/refreshCFGInServer")
+const SteamIDConverter = require("../utils/steamIdConvertor")
+
+// Quoted authId match list ([64-bit, legacy STEAM_]) for a raw or quoted id.
+// Readers match either format; writers always store the 64-bit variant.
+function authIdMatch(id) {
+  return SteamIDConverter.quotedAuthIdVariants(id);
+}
 
   /**
  * Allow-list for dynamic per-server table names (created by the SourceMod plugin).
@@ -133,6 +140,12 @@ var vipDataModel = {
         let currentDateTime = new Date()
         const expireStamp = Number(dataObj.day);
         if (!Number.isFinite(expireStamp)) return reject("Invalid expiry value");
+        // Store canonical 64-bit authId regardless of submitted format.
+        try {
+          dataObj.steamId = `"${SteamIDConverter.toCanonical64(dataObj.steamId)}"`;
+        } catch (e) {
+          return reject("Operation Fail!, Invalid Steam ID — use STEAM_1:0:123456, [U:1:123456] or 7656119…");
+        }
         for (let i = 0; i < dataObj.server.length; i++) {
           assertTableName(dataObj.server[i]);
         }
@@ -174,9 +187,15 @@ var vipDataModel = {
         }
         const addSeconds = Math.floor(Number(dataObj.day));
         if (!Number.isFinite(addSeconds)) return reject("Invalid expiry value");
+        let matchIds;
+        try {
+          matchIds = authIdMatch(dataObj.steamId);
+        } catch (e) {
+          return reject("Operation Fail!, Invalid Steam ID — use STEAM_1:0:123456, [U:1:123456] or 7656119…");
+        }
         await db.withTransaction(async (exec) => {
           for (let i = 0; i < dataObj.server.length; i++) {
-            const query = db.queryFormat(`UPDATE ${dataObj.server[i]} SET expireStamp = expireStamp + ? WHERE authId=?`, [addSeconds, dataObj.steamId]);
+            const query = db.queryFormat(`UPDATE ${dataObj.server[i]} SET expireStamp = expireStamp + ? WHERE authId IN (?)`, [addSeconds, matchIds]);
             const queryRes = await exec(query);
             if (!queryRes) {
               throw new Error("error in update");
@@ -228,7 +247,7 @@ var vipDataModel = {
 
         if (!dataObj.secKey) return reject("Unauth Access, Key Missing");
         assertTableName(dataObj.tableName);
-        let query = db.queryFormat(`DELETE FROM ${dataObj.tableName} where authId = ? `, [dataObj.primaryKey]);
+        let query = db.queryFormat(`DELETE FROM ${dataObj.tableName} where authId IN (?) `, [authIdMatch(dataObj.primaryKey)]);
         let queryRes = await db.query(query);
         if (!queryRes) {
           return reject("Error in delete");
@@ -251,7 +270,7 @@ var vipDataModel = {
         if (!dataObj.server) return reject("Server Missing in VIP Check");
         if (!dataObj.steamId) return reject("Auth Id Missing in VIP Check");
         assertTableName(dataObj.server);
-        let query = db.queryFormat(`SELECT name from ${dataObj.server} where authId = ? `, [dataObj.steamId]);
+        let query = db.queryFormat(`SELECT name from ${dataObj.server} where authId IN (?) `, [authIdMatch(dataObj.steamId)]);
         let queryRes = await db.query(query, true);
         return resolve(queryRes);
       } catch (error) {

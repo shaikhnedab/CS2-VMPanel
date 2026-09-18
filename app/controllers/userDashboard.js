@@ -223,18 +223,16 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
       // ---- VIP gifting: optional recipient SteamID (else buyer). Never trust client payer. ----
       const isGift = reqBody.isGift === true || reqBody.isGift === 'true' || reqBody.buyType === 'giftPurchase';
-      let recipientSteamId = steamId;
+      // Stored canonically as 64-bit everywhere (sv_ rows + sales recipient).
+      const buyerId64 = String(reqUser.id);
+      let recipientSteamId64 = buyerId64;
       if (isGift) {
         const raw = String(reqBody.recipientSteamId || '').trim();
         if (!raw) return reject("Recipient SteamID is required for gifting");
-        const canonSid = (sid) => String(sid).replace(/^STEAM_0:/, 'STEAM_1:');
         try {
-          if (SteamIDConverter.isSteamID(raw)) recipientSteamId = canonSid(raw);
-          else if (SteamIDConverter.isSteamID64(raw)) recipientSteamId = SteamIDConverter.toSteamID(raw);
-          else if (SteamIDConverter.isSteamID3(raw)) recipientSteamId = canonSid(SteamIDConverter.fromSteamID3(raw));
-          else return reject("Invalid recipient SteamID format");
+          recipientSteamId64 = SteamIDConverter.toCanonical64(raw);
         } catch (e) { return reject("Invalid recipient SteamID format"); }
-        if (recipientSteamId === steamId) return reject("Recipient matches buyer — use Buy instead of Gift");
+        if (recipientSteamId64 === buyerId64) return reject("Recipient matches buyer — use Buy instead of Gift");
         if (reqBody.buyType === 'renewPurchase') return reject("Gifts cannot renew; use new gift purchase");
       }
       const effectiveSaleType = isGift ? 3 : saleType;
@@ -245,7 +243,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           order_id: paymentData.id,
           payer_id: paymentData.payer.payer_id,
           payer_steamid: steamId,
-          recipient_steamid: isGift ? recipientSteamId : null,
+          recipient_steamid: isGift ? recipientSteamId64 : null,
           is_gift: isGift ? 1 : 0,
           payer_email: paymentData.payer.email_address,
           payer_name: paymentData.payer.name.given_name,
@@ -271,7 +269,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             order_id: paymentData.order_id,
             payer_id: paymentData.payer_id,
             payer_steamid: steamId,
-            recipient_steamid: isGift ? recipientSteamId : null,
+            recipient_steamid: isGift ? recipientSteamId64 : null,
             is_gift: isGift ? 1 : 0,
             payer_email: paymentData.payer_email,
             payer_name: paymentData.payer_name,
@@ -299,7 +297,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           order_id: rzpOrderId,
           payer_id: rzpPaymentId,
           payer_steamid: steamId,
-          recipient_steamid: isGift ? recipientSteamId : null,
+          recipient_steamid: isGift ? recipientSteamId64 : null,
           is_gift: isGift ? 1 : 0,
           payer_email: paymentData.payer_email,
           payer_name: paymentData.payer_name,
@@ -315,8 +313,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
 
       // Gift target (quoted canonical SteamID); self-purchase uses buyer.
-      const vipTarget = '"' + recipientSteamId + '"';
-      const vipName = isGift ? `//Gift for ${recipientSteamId} (from ${finalUserName})` : "//" + finalUserName;
+      // Quoted canonical 64-bit target for sv_ rows (buyer or gift recipient).
+      const vipTarget = '"' + (isGift ? recipientSteamId64 : buyerId64) + '"';
+      const vipName = isGift ? `//Gift for ${recipientSteamId64} (from ${finalUserName})` : "//" + finalUserName;
 
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'giftPurchase') {
 
@@ -349,7 +348,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
         const updateVipObj = {
           day: Math.floor(subDays * 86400),
-          steamId: '"' + steamId + '"',
+          steamId: '"' + buyerId64 + '"',
           server: [serverTable],
           secKey: secKey
         }

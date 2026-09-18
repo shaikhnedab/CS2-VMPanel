@@ -130,6 +130,35 @@ var SteamIDConverter = {
 
   // ------------------------------------------------------------------------------
 
+  /**
+   * Canonical 64-bit ID from any accepted form: 17-digit ID, STEAM_X:Y:Z
+   * (STEAM_0: is canonicalized to STEAM_1: first — the Y bit changes the
+   * result), [U:1:N], optionally wrapped in quotes or whitespace.
+   * Throws TypeError with a user-facing message when unusable.
+   */
+  toCanonical64: function (input) {
+    const s = String(input === undefined || input === null ? '' : input).trim().replace(/^"+|"+$/g, '').trim();
+    if (!s) throw new TypeError('Enter a Steam ID first.');
+    if (this.isSteamID64(s)) return s;
+    const canon = s.replace(/^STEAM_0:/, 'STEAM_1:');
+    if (this.isSteamID(canon)) return this.toSteamID64(canon);
+    if (this.isSteamID3(s)) return this.toSteamID64(this.fromSteamID3(s));
+    throw new TypeError('That does not look like a Steam ID. Use STEAM_1:0:123456, [U:1:123456], or 7656119…');
+  },
+
+  /**
+   * Quoted authId variants for DB matching: [quoted 64-bit, quoted legacy
+   * STEAM_]. Writers store [0]; readers match IN (both) so legacy rows keep
+   * working. Values carry the literal quotes the authId column convention
+   * uses — pass straight into query placeholders.
+   */
+  quotedAuthIdVariants: function (input) {
+    const id64 = this.toCanonical64(input);
+    return [`"${id64}"`, `"${this.toSteamID(id64)}"`];
+  },
+
+  // ------------------------------------------------------------------------------
+
   profileURL: function (steamid64) {
     if (!this.isSteamID64(steamid64)) {
       steamid64 = this.toSteamID64(steamid64);
