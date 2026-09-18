@@ -165,6 +165,16 @@ async function main() {
     assert.ok(dash.includes('recipientSteamId = rid64'), 'gift submits verified 64-bit id');
     assert.ok(dash.includes('escHtml(rid64)'), 'gift badge displays 64-bit id');
   });
+  await ok('vip and gift inputs hint 64-bit ids', () => {
+    const vip = fs.readFileSync(path.join(__dirname, '..', 'views', 'ManageVIP.ejs'), 'utf8');
+    for (const id of ['steamId_add', 'steamId_update']) {
+      assert.ok(new RegExp(`id="${id}"[^>]*value="7656119…"`).test(vip), `${id} defaults to 64-bit hint`);
+    }
+    assert.ok(!vip.includes('STEAM_X:Y:Z'), 'old STEAM_X placeholder gone from VIP forms');
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    assert.ok(/vmpGiftRecipient"[^>]*placeholder="[^"]*7656119…/.test(dash), 'gift input hints 64-bit');
+    assert.ok(!/vmpGiftRecipient"[^>]*STEAM_1:/.test(dash), 'gift placeholder drops STEAM_ example');
+  });
   await ok('validation accepts a good body', () => {
     const { errors } = validateInstallBody(good());
     assert.deepStrictEqual(errors, []);
