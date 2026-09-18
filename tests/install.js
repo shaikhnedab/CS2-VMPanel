@@ -357,7 +357,7 @@ async function main() {
   });
   await ok('floating labels rest on boxed input text line', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
-    assert.ok(/\.bmd-form-group \.bmd-label-floating\s*\{\s*top:\s*0\.8rem;/.test(css), 'resting offset pinned without !important');
+    assert.ok(/\.bmd-form-group \.bmd-label-floating\s*\{\s*top:\s*calc\(50% - 5px\);/.test(css), 'resting offset pinned without !important');
     assert.ok(css.includes('.bmd-form-group.is-filled .bmd-label-floating'), 'floated pin beats vendor float on specificity');
   });
   await ok('migration 004 adds per-server rcon refresh command', () => {

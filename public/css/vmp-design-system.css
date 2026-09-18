@@ -131,13 +131,16 @@
 .form-control:focus { border-color: var(--net) !important; box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25) !important; }
 .form-control::placeholder { color: var(--muted); }
 label, .bmd-label-floating { color: var(--muted) !important; }
-/* Boxed Nova inputs rest the floating label on the input text line. The
-   vendor resting offset assumed borderless inputs, stranding the label on
-   the box's top border. The floated pin below beats the vendor float rule on
+/* Boxed Nova inputs center the resting floating label on the input text
+   line. The vendor resting offset assumed borderless inputs, stranding the
+   label on the box's top border — and any fixed offset is font-metric
+   dependent. Centering is immune to fonts, zoom, and DPI; the -5px removes
+   half the vendor .form-group 10px bottom padding so the midpoint lands on
+   the input itself. The floated pin beats the vendor float rule on
    specificity (no !important anywhere), so valued/focused fields still lift. */
-.bmd-form-group .bmd-label-floating { top: 0.8rem; }
+.bmd-form-group .bmd-label-floating { top: calc(50% - 5px); transform: translateY(-50%); }
 .bmd-form-group.is-filled .bmd-label-floating,
-.bmd-form-group.is-focused .bmd-label-floating { top: -1rem; }
+.bmd-form-group.is-focused .bmd-label-floating { top: -1rem; transform: none; }
 select.form-control { background-color: var(--surface-solid) !important; color: var(--text) !important; }
 select.form-control option { background: var(--surface-solid); color: var(--text); }
 .form-group { margin-bottom: 16px !important; }
