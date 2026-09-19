@@ -8,6 +8,7 @@
   },
   "hostname": "localhost",
   "publicBaseUrl": "",
+  "setupComplete": false,
   "serverPort": "3535",
   "apacheProxy": false,
   "scheduleConfig": {

@@ -16,4 +16,7 @@ services:
     ports:
       - "${SERVER_PORT:-3535}:3535"
     volumes:
-      - ./.env:/app/.env
+      # Panel configuration (written by the /install wizard on first boot).
+      # Create it BEFORE the first start so the bind mount is a file, not a
+      # directory:  cp app/config/example_config.json config.json
+      - ./config.json:/app/app/config/config.json

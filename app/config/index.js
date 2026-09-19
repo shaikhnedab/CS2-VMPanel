@@ -1,18 +1,41 @@
 'use strict';
 
 // Load .env for every entry point (server, migrate, tooling). Safe no-op
-// when the file or dotenv is absent.
+// when the file or dotenv is absent. Legacy path: env vars still override
+// everything below, so existing .env installs keep working untouched.
 try { require('dotenv').config(); } catch (e) { /* dotenv optional */ }
+
+const path = require('path');
+const fs = require('fs');
 
 // Base config from config.json (kept for backwards compat), overridden by env vars.
 // Secrets must come from environment in production — never commit config.json.
 
-let rawConfig = {};
-try {
-  rawConfig = require('./config.json');
-} catch (e) {
-  rawConfig = require('./example_config.json');
+// Config file resolution: CONFIG_PATH wins (tests, custom layouts),
+// otherwise app/config/config.json, otherwise the shipped example template.
+// Reads go through here (never bare require) so reloads and setup checks
+// always see the current file. Never throws.
+function configPath() {
+  return process.env.CONFIG_PATH || path.join(__dirname, 'config.json');
 }
+
+function loadConfigFile() {
+  const tryParse = (p) => {
+    try {
+      const raw = fs.readFileSync(p, 'utf8');
+      if (!raw || !raw.trim()) return null;
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  return tryParse(configPath())
+    || tryParse(path.join(__dirname, 'example_config.json'))
+    || {};
+}
+
+let rawConfig = loadConfigFile();
 
 const envBool = (v, fb) => {
   if (v === undefined || v === null || v === '') return fb;
@@ -66,11 +89,7 @@ config.payment_gateways = {
 };
 config.logging = { logLevel: process.env.LOG_LEVEL || (rawConfig.logging && rawConfig.logging.logLevel) || 'INFO' };
 
-const path = require('path');
-const fs = require('fs');
-
-function dotenvPath() {
-  return process.env.DOTENV_PATH || path.join(__dirname, '..', '..', '.env');
+function dotenvPath() {  return process.env.DOTENV_PATH || path.join(__dirname, '..', '..', '.env');
 }
 
 const EXAMPLE_PLACEHOLDERS = new Set([
@@ -86,15 +105,22 @@ const EXAMPLE_PLACEHOLDERS = new Set([
 
 function isSetupComplete() {
   try {
-    const p = dotenvPath();
-    if (!fs.existsSync(p)) return false;
-    if (String(process.env.SETUP_COMPLETE).toLowerCase() !== 'true') return false;
-    const host = process.env.DB_HOST || '';
-    const user = process.env.DB_USER || '';
-    const name = process.env.DB_NAME || '';
+    // Source of truth: config.json (setupComplete flag + values), with
+    // process.env taking precedence so legacy .env installs keep working.
+    // Reads the file fresh every call — never a stale require cache.
+    const fileCfg = loadConfigFile();
+    const flag = String(process.env.SETUP_COMPLETE || '').toLowerCase() === 'true'
+      || fileCfg.setupComplete === true;
+    if (!flag) return false;
+    const fdb = (fileCfg && fileCfg.db) || {};
+    const host = process.env.DB_HOST || fdb.db_host || '';
+    const user = process.env.DB_USER || fdb.db_user || '';
+    const name = process.env.DB_NAME || fdb.db_name || '';
     if (!host || !user || !name) return false;
-    const jwt = process.env.JWT_SECRET || '';
-    const appSecret = process.env.APP_SESSION_SECRET || '';
+    const fjwt = (fileCfg && fileCfg.jwt) || {};
+    const fapp = (fileCfg && fileCfg.app) || {};
+    const jwt = process.env.JWT_SECRET || fjwt.key || '';
+    const appSecret = process.env.APP_SESSION_SECRET || fapp.secret || '';
     if (!jwt || jwt.length < 32 || !appSecret || appSecret.length < 32) return false;
     if (EXAMPLE_PLACEHOLDERS.has(jwt) || EXAMPLE_PLACEHOLDERS.has(appSecret)) return false;
     if (EXAMPLE_PLACEHOLDERS.has(host) || EXAMPLE_PLACEHOLDERS.has(user) || EXAMPLE_PLACEHOLDERS.has(name)) return false;
@@ -165,17 +191,14 @@ function reload() {
   try {
     require('dotenv').config({ path: dotenvPath(), override: true });
   } catch (e) { /* dotenv optional */ }
-  try {
-    rawConfig = require('./config.json');
-  } catch (e) {
-    try { rawConfig = require('./example_config.json'); } catch (e2) { /* keep previous */ }
-  }
+  rawConfig = loadConfigFile();
   applyEnv(config);
   return config;
 }
 
 config.isSetupComplete = isSetupComplete;
 config.validateEnv = validateEnv;
+config.configPath = configPath;
 config.reload = reload;
 
 module.exports = config;

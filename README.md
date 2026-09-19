@@ -43,10 +43,12 @@ sudo mysql -e "CREATE DATABASE vmpanel CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 
 # 2. Panel
 npm install
-cp .env.example .env   # optional — skip this and the wizard below creates .env for you
-npm run migrate        # apply schema migrations (indexes, gifting columns; no-ops until setup is complete)
 npm test               # smoke tests, no DB needed
 node server.js         # http://localhost:3535 → redirects to the /install wizard on first boot
+# The wizard writes app/config/config.json (mode 0600): DB credentials,
+# signing secrets, Steam key. No .env needed (still supported as legacy —
+# anything set there overrides config.json).
+npm run migrate        # apply schema migrations (indexes, gifting columns; no-ops until setup is complete)
 ```
 
 Default login is the admin account you create in the first-boot wizard below — there are no shipped credentials.
@@ -68,9 +70,17 @@ docker compose logs -f panel
 
 Pin a version with `IMAGE_TAG` (e.g. `IMAGE_TAG=v2.0.0 docker compose up -d`).
 Prefer building locally? Comment `image:` in `docker-compose.yml`, uncomment
-`build: .`, then `docker compose up -d --build`. Either way you can skip
-`.env` entirely — the wizard writes it on first boot, and the
-`./.env:/app/.env` volume mount keeps it across restarts and rebuilds.
+`build: .`, then `docker compose up -d --build`.
+First boot needs a config file on the host (otherwise the bind mount appears
+as a directory and the wizard cannot write it):
+
+```bash
+cp app/config/example_config.json config.json
+docker compose up -d
+docker compose logs -f panel
+# → http://localhost:3535 (first visit redirects to the /install wizard,
+#    which fills in config.json and keeps it across restarts and rebuilds)
+```
 
 Container crash-looping? Pull fresh and recreate (stale images are the usual
 cause — `up` alone never re-pulls):
@@ -87,7 +97,7 @@ user with full rights on it (see [Quick start — local](#quick-start--local)
 for the SQL, or use your hoster's panel). The DB user needs `CREATE`/`ALTER`
 rights on first run (tables + migrations); plain read/write is enough after.
 
-Start the panel with **no `.env`** (or `SETUP_COMPLETE=false`):
+Start the panel with **no `config.json`** (or `"setupComplete": false`):
 
 ![Install wizard](Screen_Shots/00-install.jpg)
 
@@ -102,19 +112,20 @@ Start the panel with **no `.env`** (or `SETUP_COMPLETE=false`):
    confirmed), add an optional Steam API key, and optionally the panel's
    public address (used for Steam login callbacks — leave empty to
    auto-detect), then press **Install & continue**.
-4. The panel re-tests the connection, writes `.env` (mode `0600`),
+4. The panel re-tests the connection, writes `config.json` (mode `0600`),
    creates tables, runs migrations, creates the super-admin (bcrypt cost 12),
-   flips `SETUP_COMPLETE=true`, and redirects to `/login`. The container
-   entrypoint owns the mounted `.env` to the app user automatically, so no
-   manual `chown` is needed on first boot.
+   flips `"setupComplete": true`, and redirects to `/login`. The container
+   entrypoint owns the mounted `config.json` to the app user automatically,
+   so no manual `chown` is needed on first boot.
 
 After setup `/install*` returns `404` and never reopens — even if the
 database later goes down (those requests fail with a generic error instead).
-To re-run setup: stop the panel, delete `.env`, start again.
+To re-run setup: stop the panel, delete `config.json`, start again.
 
-> Back up `.env` — it holds your DB password and signing secrets. It is
-> gitignored and never committed. `npm run migrate` stays idempotent and
-> no-ops (exit 0) until setup is complete.
+> Back up `config.json` — it holds your DB password and signing secrets. It
+> is gitignored and never committed. `npm run migrate` stays idempotent and
+> no-ops (exit 0) until setup is complete. Existing `.env` installs keep
+> working untouched: anything set there overrides `config.json`.
 
 ### Game server refresh (RCON)
 
@@ -144,15 +155,18 @@ Client ID is set (charged in the platform currency).
 1. https://developer.paypal.com → Dashboard → Apps & Credentials → create a
    REST app. Sandbox app = test money, Live app = real money.
 2. Copy the **Client ID** (single variable — no secret needed panel-side).
-3. `.env`: `PAYPAL_CLIENT_ID=<id>`, recreate the container, open the store.
+3. In `config.json` → `payment_gateways.paypal`: set `paypal_client_id`
+   (or `PAYPAL_CLIENT_ID` env var — env wins), recreate the container, open
+   the store.
 4. Test with a PayPal sandbox buyer; go live by swapping in the Live Client ID.
 
 #### PayU (INR only)
 
 1. PayU merchant dashboard → API access → copy the Test **Key** + **Salt**
    (keep them paired — a test Key with a live Salt fails the hash check).
-2. `.env`: `PAYU_ENABLED=true`, `PAYU_ENV=test`, `PAYU_MERCHANT_KEY=…`,
-   `PAYU_MERCHANT_SALT=…`; Platform Currency must be `INR`.
+2. In `config.json` → `payment_gateways.payU`: `enabled: true`,
+   `environment: "test"`, plus `merchantKey`/`merchantSalt` (or the
+   `PAYU_*` env vars — env wins); Platform Currency must be `INR`.
 3. Test with PayU's test cards — the checkout opens purple (test) vs green (live).
 4. Go live: `PAYU_ENV=live` plus the Live Key + Salt.
 Note: PayU return URLs follow `PUBLIC_BASE_URL` when set, else the address
@@ -163,14 +177,15 @@ reachable or test payments cannot return.
 
 1. Razorpay Dashboard → Settings → API Keys → generate a **Test** pair
    (`rzp_test_…` ID + secret).
-2. `.env`: `RAZORPAY_ENABLED=true`, `RAZORPAY_KEY_ID=…`,
-   `RAZORPAY_KEY_SECRET=…`; currency `INR`. (`RAZORPAY_ENV` is accepted but
-   test/live mode actually follows the key prefix.)
+2. In `config.json` → `payment_gateways.razorPay`: `enabled: true` plus
+   `keyId`/`keySecret` (or the `RAZORPAY_*` env vars — env wins);
+   currency `INR`. (`RAZORPAY_ENV` is accepted but test/live mode actually
+   follows the key prefix.)
 3. Test with Razorpay test cards/UPI — the panel verifies the payment
    signature server-side before granting VIP.
 4. Go live: generate the **Live** pair (`rzp_live_…`) and swap both values.
 
-After any `.env` change: `docker compose up -d --force-recreate`
+After any payment config change: `docker compose up -d --force-recreate`
 (config loads at boot; plain `up` is not enough).
 
 Troubleshooting: button missing → gateway enabled? (PayPal: Client ID
@@ -187,6 +202,7 @@ after the edit? Payment failing at checkout → wrong-mode credentials
 | `STEAM_API_KEY` | for player login | Steam Web API key |
 | `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | `true` behind nginx/Apache (trusts `X-Forwarded-Proto`; cookies are `Secure` automatically on HTTPS). Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
 | `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks (e.g. `https://vip.example.com`). Asked by the install wizard; empty = auto-detect from each request |
+| `CONFIG_PATH` | no | Override the config file location (default `app/config/config.json`) |
 | `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |

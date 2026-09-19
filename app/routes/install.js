@@ -219,19 +219,19 @@ function registerInstallRoutes(app) {
       }
 
       const hash = await bcrypt.hash(values.adminPassword, 12);
-      const envWriter = require('../utils/envWriter');
+      const configWriter = require('../utils/configWriter');
 
-      envWriter.writeEnv({
-        DB_HOST: values.dbHost,
-        DB_PORT: String(values.dbPortNum),
-        DB_USER: values.dbUser,
-        DB_PASSWORD: values.dbPassword,
-        DB_NAME: values.dbName,
-        JWT_SECRET: envWriter.generateSecret(32),
-        APP_SESSION_SECRET: envWriter.generateSecret(32),
-        STEAM_API_KEY: values.steamApiKey,
-        ...(values.publicBaseUrl ? { PUBLIC_BASE_URL: values.publicBaseUrl } : {}),
-        SETUP_COMPLETE: 'false',
+      configWriter.writeConfig({
+        db_host: values.dbHost,
+        db_port: values.dbPortNum,
+        db_user: values.dbUser,
+        db_password: values.dbPassword,
+        db_name: values.dbName,
+        jwt_secret: configWriter.generateSecret(32),
+        app_secret: configWriter.generateSecret(32),
+        steam_api_key: values.steamApiKey,
+        ...(values.publicBaseUrl ? { public_base_url: values.publicBaseUrl } : {}),
+        setup_complete: false,
       });
       config.reload();
 
@@ -252,7 +252,7 @@ function registerInstallRoutes(app) {
       await userModel.createAdmin({ username: values.adminUsername, hash });
 
       stage = 'finalizing setup';
-      envWriter.writeEnv({ SETUP_COMPLETE: 'true' });
+      configWriter.writeConfig({ setup_complete: true });
       config.reload();
       markComplete();
 

@@ -28,9 +28,10 @@ function ok(name, fn) {
   }
 }
 
-// Isolate dotenv before any app module loads.
+// Isolate dotenv + config file before any app module loads.
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vmp-install-'));
 process.env.DOTENV_PATH = path.join(tmpDir, 'test.env');
+process.env.CONFIG_PATH = path.join(tmpDir, 'test-config.json');
 
 async function main() {
   const config = require('../app/config');
@@ -301,6 +302,9 @@ async function main() {
   });
 
   // ---- 3. isSetupComplete matrix (env save/restore) ----
+  // Setup flag lives in config.json now, but process.env still wins, so
+  // legacy .env-only installs keep working. CONFIG_PATH points at a missing
+  // file here, isolating the env-driven cases below.
   const savedEnv = { ...process.env };
   const matrixPath = path.join(tmpDir, 'matrix.env');
   const setEnv = (vars) => {
@@ -314,10 +318,10 @@ async function main() {
     process.env.DOTENV_PATH = path.join(tmpDir, 'test.env');
   };
   try {
-    await ok('isSetupComplete false when file missing', () => {
+    await ok('isSetupComplete true with complete env and no files', () => {
       try { fs.unlinkSync(matrixPath); } catch (e) { /* absent */ }
       setEnv({ SETUP_COMPLETE: 'true', DB_HOST: 'h', DB_USER: 'u', DB_NAME: 'd', JWT_SECRET: 'x'.repeat(32), APP_SESSION_SECRET: 'y'.repeat(32) });
-      assert.strictEqual(config.isSetupComplete(), false);
+      assert.strictEqual(config.isSetupComplete(), true);
     });
     await ok('isSetupComplete false when flag not true', () => {
       fs.writeFileSync(matrixPath, 'x=1\n');
@@ -347,6 +351,70 @@ async function main() {
   } finally {
     restore();
   }
+
+  // ---- 3b. config.json writer + file/env precedence (no DB) ----
+  await ok('configWriter round-trips nested config with 0600 perms', () => {
+    const configWriter = require('../app/utils/configWriter');
+    const target = configWriter.writeConfig({
+      db_host: 'h', db_port: 3306, db_user: 'u', db_password: 'p', db_name: 'd',
+      jwt_secret: 'x'.repeat(32), app_secret: 'y'.repeat(32),
+      steam_api_key: '', public_base_url: 'https://vip.example.com/', setup_complete: false,
+    });
+    assert.strictEqual(target, process.env.CONFIG_PATH);
+    const parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+    assert.strictEqual(parsed.db.db_host, 'h');
+    assert.strictEqual(parsed.db.db_port, 3306);
+    assert.strictEqual(parsed.jwt.key, 'x'.repeat(32));
+    // Stored verbatim (normalization is the validator's job, not the writer's).
+    assert.strictEqual(parsed.publicBaseUrl, 'https://vip.example.com/');
+    assert.strictEqual(parsed.setupComplete, false);
+    assert.strictEqual(fs.statSync(target).mode & 0o777, 0o600);
+  });
+  await ok('configWriter merges (never clobbers hand-edited keys)', () => {
+    const configWriter = require('../app/utils/configWriter');
+    const target = process.env.CONFIG_PATH;
+    const seeded = JSON.parse(fs.readFileSync(target, 'utf8'));
+    seeded.payment_gateways = { payU: { merchantKey: 'keep-me' } };
+    fs.writeFileSync(target, JSON.stringify(seeded));
+    configWriter.writeConfig({ setup_complete: true });
+    const merged = JSON.parse(fs.readFileSync(target, 'utf8'));
+    assert.strictEqual(merged.setupComplete, true);
+    assert.strictEqual(merged.payment_gateways.payU.merchantKey, 'keep-me');
+    assert.strictEqual(merged.db.db_host, 'h');
+  });
+  await ok('configWriter falls back to example template on garbage', () => {
+    const configWriter = require('../app/utils/configWriter');
+    const target = process.env.CONFIG_PATH;
+    fs.writeFileSync(target, 'not json {{{');
+    const out = configWriter.writeConfig({ setup_complete: false });
+    assert.strictEqual(out, target);
+    const parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
+    assert.ok(parsed.db && typeof parsed.db.db_port !== 'undefined');
+    try { fs.unlinkSync(target); } catch (e) { /* leave absent for later sections */ }
+  });
+  await ok('process env still overrides config.json (legacy installs)', () => {
+    const cfgPath = process.env.CONFIG_PATH;
+    fs.writeFileSync(cfgPath, JSON.stringify({
+      setupComplete: true,
+      db: { db_host: 'file-host', db_user: 'u', db_name: 'd' },
+      jwt: { key: 'x'.repeat(32) }, app: { secret: 'y'.repeat(32) },
+    }));
+    const savedDbHost = process.env.DB_HOST;
+    try {
+      delete process.env.DB_HOST;
+      config.reload();
+      assert.strictEqual(config.db.db_host, 'file-host');
+      assert.strictEqual(config.isSetupComplete(), true);
+      process.env.DB_HOST = 'env-host';
+      config.reload();
+      assert.strictEqual(config.db.db_host, 'env-host');
+    } finally {
+      if (savedDbHost === undefined) delete process.env.DB_HOST;
+      else process.env.DB_HOST = savedDbHost;
+      try { fs.unlinkSync(cfgPath); } catch (e) { /* absent */ }
+      config.reload();
+    }
+  });
 
   // ---- 4. runMigrations export shape (no DB: stub queryFn) ----
   await ok('runMigrations applies files via injected queryFn', async () => {
@@ -560,10 +628,15 @@ async function main() {
   });
 
   // ---- 5. HTTP wizard flow (stubbed mysql2, no real DB) ----
+  // The wizard persists to config.json now (CONFIG_PATH isolated here); the
+  // legacy .env path must stay untouched to prove the .env-free install.
+  const httpConfig = path.join(tmpDir, 'http-config.json');
+  try { fs.unlinkSync(httpConfig); } catch (e) { /* absent */ }
+  process.env.CONFIG_PATH = httpConfig;
   const httpEnv = path.join(tmpDir, 'http.env');
   try { fs.unlinkSync(httpEnv); } catch (e) { /* absent */ }
   process.env.DOTENV_PATH = httpEnv;
-  for (const k of ['SETUP_COMPLETE', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'APP_SESSION_SECRET', 'STEAM_API_KEY']) delete process.env[k];
+  for (const k of ['SETUP_COMPLETE', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'APP_SESSION_SECRET', 'STEAM_API_KEY', 'PUBLIC_BASE_URL']) delete process.env[k];
   install.resetInstallState();
 
   // Stub outbound MySQL connection attempts (ephemeral test-connection).
@@ -706,9 +779,14 @@ async function main() {
       });
       assert.strictEqual(r.status, 302);
       assert.strictEqual(r.headers.location, '/login');
-      const written = fs.readFileSync(httpEnv, 'utf8');
-      assert.ok(written.includes('SETUP_COMPLETE=true'));
-      assert.ok(!written.includes('twelve-chars-minimum'));
+      const written = JSON.parse(fs.readFileSync(httpConfig, 'utf8'));
+      assert.strictEqual(written.setupComplete, true);
+      assert.strictEqual(written.db.db_host, 'wizard-host');
+      assert.strictEqual(written.db.db_user, 'wizard-user');
+      assert.strictEqual(written.db.db_name, 'vmpanel');
+      assert.ok(written.jwt.key.length >= 64 && written.app.secret.length >= 64);
+      assert.ok(!JSON.stringify(written).includes('twelve-chars-minimum'), 'admin password never lands in config');
+      assert.ok(!fs.existsSync(httpEnv), 'wizard writes config.json, not .env');
     });
     await ok('wizard GET /install 404s after completion', async () => {
       const r = await request('GET', '/install');
@@ -719,10 +797,10 @@ async function main() {
       // success test, and this runs after completion. Temporarily flip setup
       // back to incomplete so the gate lets POSTs reach the limiter.
       install.resetInstallState();
-      const httpEnvBak = process.env.DOTENV_PATH;
-      for (const k of ['SETUP_COMPLETE', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'APP_SESSION_SECRET', 'STEAM_API_KEY']) delete process.env[k];
-      process.env.DOTENV_PATH = path.join(tmpDir, 'incomplete.env');
-      try { fs.unlinkSync(process.env.DOTENV_PATH); } catch (e) { /* absent */ }
+      const httpConfigBak = process.env.CONFIG_PATH;
+      for (const k of ['SETUP_COMPLETE', 'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET', 'APP_SESSION_SECRET', 'STEAM_API_KEY', 'PUBLIC_BASE_URL']) delete process.env[k];
+      process.env.CONFIG_PATH = path.join(tmpDir, 'incomplete.json');
+      try { fs.unlinkSync(process.env.CONFIG_PATH); } catch (e) { /* absent */ }
       const app2 = createApp();
       const server2 = await new Promise((resolve) => {
         const s = app2.listen(0, () => resolve(s));
@@ -760,7 +838,7 @@ async function main() {
         assert.ok(!/s3cret|supersecret/i.test(last.body));
       } finally {
         await new Promise((resolve) => server2.close(resolve));
-        process.env.DOTENV_PATH = httpEnvBak;
+        process.env.CONFIG_PATH = httpConfigBak;
         install.resetInstallState();
       }
     });

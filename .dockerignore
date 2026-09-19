@@ -9,3 +9,5 @@ Screen_Shots
 *.md
 !package.json
 !package-lock.json
+config.json
+app/config/config.json
