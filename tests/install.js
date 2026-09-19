@@ -198,6 +198,13 @@ async function main() {
     assert.ok(/vmpGiftRecipient"[^>]*placeholder="[^"]*7656119…/.test(dash), 'gift input hints 64-bit');
     assert.ok(!/vmpGiftRecipient"[^>]*STEAM_1:/.test(dash), 'gift placeholder drops STEAM_ example');
   });
+  await ok('placeholder paypal client ids count as unconfigured', () => {
+    const { isRealPaypalClientId } = require('../app/controllers/userDashboard');
+    for (const bad of ['', null, undefined, 'Your paypal client id here (Leave Empty to disable Paypal Feature)', 'change-me-paypal-id']) {
+      assert.strictEqual(isRealPaypalClientId(bad), false);
+    }
+    assert.strictEqual(isRealPaypalClientId('AYaBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890'), true);
+  });
   await ok('validation accepts a good body', () => {
     const { errors } = validateInstallBody(good());
     assert.deepStrictEqual(errors, []);

@@ -38,6 +38,16 @@ const panelServerModal = require("../models/panelServerModal.js");
 const paymentTamperedMessage =
   "Payment Tempered!, Response HASH does not matches with payment HASH therefore payment failed, Contact Support";
 
+// Empty or example placeholder Client IDs count as "not configured" —
+// otherwise the placeholder text leaks into the PayPal SDK URL and breaks
+// checkout for installs that never set up PayPal.
+const isRealPaypalClientId = (v) => {
+  const s = String(v || '').trim();
+  if (!s) return false;
+  return !/your paypal|empty to disable|change-me|example/i.test(s);
+};
+exports.isRealPaypalClientId = isRealPaypalClientId;
+
 //-----------------------------------------------------------------------------------------------------
 // 
 
@@ -118,7 +128,7 @@ const myDashboardFunc = (reqBody, reqUser) => {
 
       }
 
-      const paypalActive = !!paypalClientID;
+      const paypalActive = isRealPaypalClientId(paypalClientID);
       const payuActive = (payUConfig.enabled == true || payUConfig.enabled == "true");
       const razorpayActive = (razorpayConfig.enabled == true || razorpayConfig.enabled == "true");
 
