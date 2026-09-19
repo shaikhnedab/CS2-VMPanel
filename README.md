@@ -82,6 +82,12 @@ docker compose logs -f panel
 #    which fills in config.json and keeps it across restarts and rebuilds)
 ```
 
+> If `config.json` on the host is a **folder** instead of a file, the bind
+> mount beat you to it (Docker creates a directory when the source file is
+> missing at first `up`). Fix: `docker compose down && rmdir config.json &&
+> cp app/config/example_config.json config.json && docker compose up -d`.
+> The wizard also refuses with this exact remedy if it hits the directory.
+
 Container crash-looping? Pull fresh and recreate (stale images are the usual
 cause — `up` alone never re-pulls):
 

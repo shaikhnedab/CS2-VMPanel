@@ -44,6 +44,17 @@ function readBase(target) {
 
 function writeConfig(values) {
   const target = targetPath();
+  try {
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+      throw new Error(
+        'config.json is a directory, not a file: the bind mount created it because the host file was missing. ' +
+        'Stop the panel, replace it with a file (cp app/config/example_config.json config.json), then start again.'
+      );
+    }
+  } catch (e) {
+    if (/bind mount/.test(e && e.message)) throw e;
+    // Stat race / transient FS error: fall through to the write attempt below.
+  }
   const dir = path.dirname(target);
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
 

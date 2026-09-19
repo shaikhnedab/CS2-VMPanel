@@ -382,8 +382,7 @@ async function main() {
     assert.strictEqual(merged.payment_gateways.payU.merchantKey, 'keep-me');
     assert.strictEqual(merged.db.db_host, 'h');
   });
-  await ok('configWriter falls back to example template on garbage', () => {
-    const configWriter = require('../app/utils/configWriter');
+  await ok('configWriter falls back to example template on garbage', () => {    const configWriter = require('../app/utils/configWriter');
     const target = process.env.CONFIG_PATH;
     fs.writeFileSync(target, 'not json {{{');
     const out = configWriter.writeConfig({ setup_complete: false });
@@ -391,6 +390,22 @@ async function main() {
     const parsed = JSON.parse(fs.readFileSync(target, 'utf8'));
     assert.ok(parsed.db && typeof parsed.db.db_port !== 'undefined');
     try { fs.unlinkSync(target); } catch (e) { /* leave absent for later sections */ }
+  });
+  await ok('configWriter refuses a directory target with remedy', () => {
+    const configWriter = require('../app/utils/configWriter');
+    const dirTarget = path.join(tmpDir, 'config-dir-target');
+    try { fs.mkdirSync(dirTarget, { recursive: true }); } catch (e) { /* ignore */ }
+    const savedPath = process.env.CONFIG_PATH;
+    process.env.CONFIG_PATH = dirTarget;
+    try {
+      assert.throws(
+        () => configWriter.writeConfig({ setup_complete: true }),
+        /bind mount|directory/i
+      );
+    } finally {
+      process.env.CONFIG_PATH = savedPath;
+      try { fs.rmdirSync(dirTarget); } catch (e) { /* ignore */ }
+    }
   });
   await ok('process env still overrides config.json (legacy installs)', () => {
     const cfgPath = process.env.CONFIG_PATH;
