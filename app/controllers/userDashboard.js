@@ -129,6 +129,7 @@ const myDashboardFunc = (reqBody, reqUser) => {
       }
 
       const paypalActive = isRealPaypalClientId(paypalClientID);
+      const giftingActive = !config.gifting || config.gifting.enabled !== false;
       const payuActive = (payUConfig.enabled == true || payUConfig.enabled == "true");
       const razorpayActive = (razorpayConfig.enabled == true || razorpayConfig.enabled == "true");
 
@@ -144,6 +145,7 @@ const myDashboardFunc = (reqBody, reqUser) => {
         "payuActive": payuActive,
         "payuEnv": payUConfig.environment,
         "razorpayActive": razorpayActive,
+        "giftingActive": giftingActive,
         "colSpan": `${colSpan([paypalActive, payuActive, razorpayActive])}`
       })
 
@@ -233,6 +235,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
       // ---- VIP gifting: optional recipient SteamID (else buyer). Never trust client payer. ----
       const isGift = reqBody.isGift === true || reqBody.isGift === 'true' || reqBody.buyType === 'giftPurchase';
+      if (isGift && config.gifting && config.gifting.enabled === false) {
+        return reject("VIP gifting is disabled by the panel administrator");
+      }
       // Stored canonically as 64-bit everywhere (sv_ rows + sales recipient).
       const buyerId64 = String(reqUser.id);
       let recipientSteamId64 = buyerId64;

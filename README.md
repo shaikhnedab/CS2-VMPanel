@@ -154,7 +154,9 @@ any VIP is granted. Prices come from each server's VIP Price / bundle.
 
 First: Panel Settings → set **Platform Currency** (`USD` or `INR`).
 PayU and Razorpay buttons appear only for `INR`; PayPal appears whenever its
-Client ID is set (charged in the platform currency).
+Client ID is set (charged in the platform currency). VIP gifting is on by
+default; set `GIFTING_ENABLED=false` (or `"gifting": { "enabled": false }`
+in `config.json`) to hide the gift option and refuse gift purchases.
 
 #### PayPal (any currency; typical for USD)
 
@@ -209,6 +211,7 @@ after the edit? Payment failing at checkout → wrong-mode credentials
 | `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | `true` behind nginx/Apache (trusts `X-Forwarded-Proto`; cookies are `Secure` automatically on HTTPS). Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
 | `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks (e.g. `https://vip.example.com`). Asked by the install wizard; empty = auto-detect from each request |
 | `CONFIG_PATH` | no | Override the config file location (default `app/config/config.json`) |
+| `GIFTING_ENABLED` | no | Set `false` to disable VIP gifting (`true` by default) |
 | `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |

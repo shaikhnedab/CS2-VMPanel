@@ -70,6 +70,9 @@ config.bundleRelTable = process.env.BUNDLE_REL_TABLE || rawConfig.bundleRelTable
 config.jwt = { key: process.env.JWT_SECRET || (rawConfig.jwt && rawConfig.jwt.key) };
 config.app = { secret: process.env.APP_SESSION_SECRET || (rawConfig.app && rawConfig.app.secret) };
 config.steam_api_key = process.env.STEAM_API_KEY !== undefined ? process.env.STEAM_API_KEY : rawConfig.steam_api_key;
+config.gifting = {
+  enabled: envBool(process.env.GIFTING_ENABLED, !rawConfig.gifting || rawConfig.gifting.enabled !== false),
+};
 
 const pg = rawConfig.payment_gateways || {};
 config.payment_gateways = {
@@ -167,6 +170,9 @@ function applyEnv(cfg) {
   cfg.jwt = { key: process.env.JWT_SECRET || (rc.jwt && rc.jwt.key) };
   cfg.app = { secret: process.env.APP_SESSION_SECRET || (rc.app && rc.app.secret) };
   cfg.steam_api_key = process.env.STEAM_API_KEY !== undefined ? process.env.STEAM_API_KEY : rc.steam_api_key;
+  cfg.gifting = {
+    enabled: envBool(process.env.GIFTING_ENABLED, !rc.gifting || rc.gifting.enabled !== false),
+  };
   const pg = rc.payment_gateways || {};
   cfg.payment_gateways = {
     paypal: { paypal_client_id: process.env.PAYPAL_CLIENT_ID || (pg.paypal && pg.paypal.paypal_client_id) || '' },

@@ -89,6 +89,15 @@ const resolveRecipientFunc = async (input) => {
 
 exports.resolveRecipient = async (req, res) => {
   try {
+    const giftingOn = (() => {
+      try {
+        const g = require('../config').gifting;
+        return !g || g.enabled !== false;
+      } catch (e) { return true; }
+    })();
+    if (!giftingOn) {
+      return sendSafeError(req, res, new Error('disabled'), 'VIP gifting is disabled by the panel administrator.');
+    }
     const result = await resolveRecipientFunc(req.body && req.body.input);
     res.json({ success: true, data: { res: result, message: 'Receiver verified', notifType: 'success' } });
   } catch (error) {

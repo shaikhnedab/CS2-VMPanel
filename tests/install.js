@@ -189,8 +189,7 @@ async function main() {
     assert.ok(dash.includes('recipientSteamId = rid64'), 'gift submits verified 64-bit id');
     assert.ok(dash.includes('escHtml(rid64)'), 'gift badge displays 64-bit id');
   });
-  await ok('vip and gift inputs hint 64-bit ids', () => {
-    const vip = fs.readFileSync(path.join(__dirname, '..', 'views', 'ManageVIP.ejs'), 'utf8');
+  await ok('vip and gift inputs hint 64-bit ids', () => {    const vip = fs.readFileSync(path.join(__dirname, '..', 'views', 'ManageVIP.ejs'), 'utf8');
     for (const id of ['steamId_add', 'steamId_update']) {
       assert.ok(new RegExp(`id="${id}"[^>]*value="7656119…"`).test(vip), `${id} defaults to 64-bit hint`);
     }
@@ -578,6 +577,65 @@ async function main() {
       assert.throws(() => C.toCanonical64(bad), TypeError);
     }
     assert.deepStrictEqual(C.quotedAuthIdVariants('STEAM_1:0:65879019'), ['"76561198092023766"', '"STEAM_1:0:65879019"']);
+  });
+  await ok('gifting flag defaults on, env/file can disable', () => {
+    const config = require('../app/config');
+    const savedEnv = process.env.GIFTING_ENABLED;
+    const cfgPath = process.env.CONFIG_PATH;
+    const seed = { gifting: { enabled: false } };
+    try {
+      delete process.env.GIFTING_ENABLED;
+      fs.writeFileSync(cfgPath, JSON.stringify(seed));
+      config.reload();
+      assert.strictEqual(config.gifting.enabled, false);
+      process.env.GIFTING_ENABLED = 'true';
+      config.reload();
+      assert.strictEqual(config.gifting.enabled, true);
+      delete process.env.GIFTING_ENABLED;
+      fs.writeFileSync(cfgPath, JSON.stringify({ gifting: { enabled: true } }));
+      config.reload();
+      assert.strictEqual(config.gifting.enabled, true);
+    } finally {
+      if (savedEnv === undefined) delete process.env.GIFTING_ENABLED;
+      else process.env.GIFTING_ENABLED = savedEnv;
+      try { fs.unlinkSync(cfgPath); } catch (e) { /* absent */ }
+      config.reload();
+    }
+  });
+  await ok('recipient verification refuses when gifting disabled', async () => {    const config = require('../app/config');
+    const savedEnv = process.env.GIFTING_ENABLED;
+    const { resolveRecipient } = require('../app/controllers/giftRecipient');
+    let payload = null;
+    const res = { json: (o) => { payload = o; } };
+    res.status = () => res;
+    process.env.GIFTING_ENABLED = 'false';
+    config.reload();
+    try {
+      await resolveRecipient({ body: { input: '76561198092023766' }, uuid: 't', method: 'POST', originalUrl: '/x' }, res);
+      assert.strictEqual(payload.success, false);
+      assert.ok(/disabled/i.test(JSON.stringify(payload)));
+    } finally {
+      if (savedEnv === undefined) delete process.env.GIFTING_ENABLED;
+      else process.env.GIFTING_ENABLED = savedEnv;
+      config.reload();
+    }
+  });
+  await ok('store shows gift card only when gifting enabled', () => {
+    const ejs = require('ejs');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    const locals = {
+      panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: 'INR', community_logo_url: '' },
+      currentURL: '/mydashboard', csrfToken: 't', sessionToken: null, adminType: 0,
+      sessionSteamId: 'x', adminName: null, steamName: null,
+      paypalActive: false, paypalClientID: '', payuActive: false, payuEnv: 'test',
+      razorpayActive: false, colSpan: '12', serverArray: [], bundleArray: [],
+      userDataListing: [], userData: { displayname: 'T' },
+    };
+    const render = (giftingActive) => ejs.render(src, { ...locals, giftingActive },
+      { filename: path.join(__dirname, '..', 'views', 'UserDashboard.ejs') });
+    assert.ok(render(true).includes('vmpGiftToggle'), 'gift toggle shown when enabled');
+    assert.ok(!render(false).includes('vmpGiftToggle'), 'gift toggle hidden when disabled');
+    assert.ok(render(undefined).includes('vmpGiftToggle'), 'gift toggle shown when flag absent (legacy)');
   });
   await ok('admin vip add stores canonical 64-bit authId', async () => {
     const { EventEmitter } = require('events');
