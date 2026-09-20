@@ -620,8 +620,7 @@ async function main() {
       config.reload();
     }
   });
-  await ok('store shows gift card only when gifting enabled', () => {
-    const ejs = require('ejs');
+  await ok('store shows gift card only when gifting enabled', () => {    const ejs = require('ejs');
     const src = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
     const locals = {
       panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: 'INR', community_logo_url: '' },
@@ -636,6 +635,22 @@ async function main() {
     assert.ok(render(true).includes('vmpGiftToggle'), 'gift toggle shown when enabled');
     assert.ok(!render(false).includes('vmpGiftToggle'), 'gift toggle hidden when disabled');
     assert.ok(render(undefined).includes('vmpGiftToggle'), 'gift toggle shown when flag absent (legacy)');
+  });
+  await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
+    const crypto = require('crypto');
+    const { initPayUPaymentFunc } = require('../app/controllers/payU');
+    const req = { protocol: 'https', get: (h) => (h === 'host' ? 'vip.example.com' : undefined) };
+    const body = {
+      serverData: { vip_days: 30, server_name: 'S', vip_price: 100 },
+      type: 'newPurchase', userFirstName: 'T', userEmail: 't@e.com', userMobile: '1',
+    };
+    const r = await initPayUPaymentFunc(body, { id: '76561198092023766' }, 'k', req);
+    assert.strictEqual(r.udf5, '76561198092023766');
+    assert.ok(!/STEAM_/.test(r.udf5), 'no legacy id leaks to payu');
+    // Recompute the hash over the documented formula to prove consistency.
+    const text = `${r.key}|${r.txnid}|100|30 days VIP for S (New Buy)|T|t@e.com|||||76561198092023766||||||`;
+    const expect = crypto.createHash('sha512').update(text + require('../app/config').payment_gateways.payU.merchantSalt).digest('hex');
+    assert.strictEqual(r.hash, expect);
   });
   await ok('admin vip add stores canonical 64-bit authId', async () => {
     const { EventEmitter } = require('events');

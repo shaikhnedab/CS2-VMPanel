@@ -53,7 +53,9 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
   return new Promise(async (resolve, reject) => {
     try {
 
-      const steamId = SteamIDConverter.toSteamID(reqUser.id);
+      // Canonical 64-bit buyer id: goes into the hash input and udf5 alike,
+      // so PayU echoes back exactly what we signed.
+      const steamId = SteamIDConverter.toCanonical64(reqUser.id);
 
       let productData = reqBody.serverData
       let productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")

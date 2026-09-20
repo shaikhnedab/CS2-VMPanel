@@ -239,7 +239,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         return reject("VIP gifting is disabled by the panel administrator");
       }
       // Stored canonically as 64-bit everywhere (sv_ rows + sales recipient).
-      const buyerId64 = String(reqUser.id);
+      const buyerId64 = SteamIDConverter.toCanonical64(reqUser.id);
       let recipientSteamId64 = buyerId64;
       if (isGift) {
         const raw = String(reqBody.recipientSteamId || '').trim();
@@ -257,7 +257,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         paymentInsertObj = {
           order_id: paymentData.id,
           payer_id: paymentData.payer.payer_id,
-          payer_steamid: steamId,
+          payer_steamid: buyerId64,
           recipient_steamid: isGift ? recipientSteamId64 : null,
           is_gift: isGift ? 1 : 0,
           payer_email: paymentData.payer.email_address,
@@ -283,7 +283,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           paymentInsertObj = {
             order_id: paymentData.order_id,
             payer_id: paymentData.payer_id,
-            payer_steamid: steamId,
+            payer_steamid: buyerId64,
             recipient_steamid: isGift ? recipientSteamId64 : null,
             is_gift: isGift ? 1 : 0,
             payer_email: paymentData.payer_email,
@@ -311,7 +311,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         paymentInsertObj = {
           order_id: rzpOrderId,
           payer_id: rzpPaymentId,
-          payer_steamid: steamId,
+          payer_steamid: buyerId64,
           recipient_steamid: isGift ? recipientSteamId64 : null,
           is_gift: isGift ? 1 : 0,
           payer_email: paymentData.payer_email,
