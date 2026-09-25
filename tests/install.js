@@ -196,7 +196,7 @@ async function main() {
     assert.ok(!vip.includes('STEAM_X:Y:Z'), 'old STEAM_X placeholder gone from VIP forms');
     const dash = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
     assert.ok(/vmpGiftRecipient"[^>]*placeholder="[^"]*7656119…/.test(dash), 'gift input hints 64-bit');
-    assert.ok(!/vmpGiftRecipient"[^>]*STEAM_1:/.test(dash), 'gift placeholder drops STEAM_ example');
+    assert.ok(!/vmpGiftRecipient"[^>]*STEAM_X:Y:Z/.test(dash), 'gift placeholder drops the fake STEAM_X example');
   });
   await ok('placeholder paypal client ids count as unconfigured', () => {
     const { isRealPaypalClientId } = require('../app/controllers/userDashboard');
@@ -472,6 +472,40 @@ async function main() {
     assert.ok(/\.bmd-form-group \.bmd-label-floating\s*\{\s*top:\s*calc\(50% - 5px\);/.test(css), 'resting offset pinned without !important');
     assert.ok(css.includes('.bmd-form-group.is-filled .bmd-label-floating'), 'floated pin beats vendor float on specificity');
   });
+  await ok('tick boxes are visible (vendor hides the native input)', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
+    const rules = css.match(/\.form-check \.form-check-input\s*\{[^}]*\}/g) || [];
+    assert.ok(rules.length, 'checkbox rule exists');
+    // Several rules target this selector (the main reset plus narrow
+    // overrides); the reset is by far the substantial one.
+    const last = rules.reduce((a, b) => (b.length > a.length ? b : a), '');
+    // material-dashboard ships opacity:0 / z-index:-1 / width:0 / overflow:hidden
+    // / pointer-events:none on .form-check-input. Every one has to be undone or
+    // the box renders behind its own label and looks like it is missing.
+    for (const prop of ['z-index', 'opacity', 'overflow', 'pointer-events', 'position', 'width', 'height']) {
+      assert.ok(new RegExp(prop + '\\s*:').test(last), prop + ' is reset');
+    }
+    assert.ok(/z-index:\s*auto\s*!important/.test(last), 'z-index leaves the -1 pit');
+    assert.ok(/opacity:\s*1\s*!important/.test(last), 'opacity forced visible');
+    assert.ok(/pointer-events:\s*auto\s*!important/.test(last), 'input is clickable');
+    // ...but the Settings radios/swatches are also nested inside a .form-check
+    // and must stay hidden, or a raw radio shows up inside the pill.
+    assert.ok(/\.vmp-seg \.form-check-input[\s\S]*?opacity:\s*0\s*!important/.test(css), 'seg radios re-hidden');
+    assert.ok(/\.vmp-swatches \.form-check-input[\s\S]*?opacity:\s*0\s*!important/.test(css), 'swatch radios re-hidden');
+  });
+  await ok('flag tables drop the grid wrapper that inflated every row', () => {
+    const tbody = fs.readFileSync(path.join(__dirname, '..', 'views', 'TbodyAdminFlags.ejs'), 'utf8');
+    assert.ok(!/class="col-md-12"/.test(tbody), 'no .col-md-12 inside table cells');
+    const opens = (tbody.match(/<div\b/g) || []).length;
+    const closes = (tbody.match(/<\/div>/g) || []).length;
+    assert.strictEqual(opens, closes, 'divs balanced: ' + opens + '/' + closes);
+    assert.strictEqual((tbody.match(/name="admin_flags"/g) || []).length, 21, 'all 21 flag rows kept');
+    assert.ok(tbody.includes('name="admin_flag_manual_entry"'), 'use-group row kept');
+    const admin = fs.readFileSync(path.join(__dirname, '..', 'views', 'ManageAdmin.ejs'), 'utf8');
+    assert.ok(admin.includes('vmp-flags-table'), 'table opts into the compact rules');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
+    assert.ok(/\.vmp-flags-table td\s*\{[^}]*padding:\s*6px 10px/.test(css), 'compact row padding');
+  });
   await ok('migration 004 adds per-server rcon refresh command', () => {
     const sql004 = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '004_server_rcon_refresh_cmd.sql'), 'utf8');
     const stmts = sql004.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
@@ -573,7 +607,14 @@ async function main() {
     assert.strictEqual(C.toCanonical64('STEAM_0:0:65879019'), '76561198092023766');
     assert.strictEqual(C.toCanonical64('[U:1:131758038]'), '76561198092023766');
     assert.strictEqual(C.toCanonical64('  "76561198092023766"  '), '76561198092023766');
-    for (const bad of ['', null, undefined, 'abc', '123', 'STEAM_9:9:9', 'STEAM_1:0:abc']) {
+    // Bare numbers are the 32-bit Steam account ID form.
+    assert.strictEqual(C.toCanonical64('131758038'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('123'), '76561197960265851');
+    // Steam/FiveM hex forms.
+    assert.strictEqual(C.toCanonical64('STEAM:110000107DA77D6'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('0x110000107DA77D6'), '76561198092023766');
+    assert.strictEqual(C.toCanonical64('STEAM:0:7DA77D6'), '76561198092023766');
+    for (const bad of ['', null, undefined, 'abc', 'STEAM_9:9:9', 'STEAM_1:0:abc', 'STEAM:110000107', '99999999999']) {
       assert.throws(() => C.toCanonical64(bad), TypeError);
     }
     assert.deepStrictEqual(C.quotedAuthIdVariants('STEAM_1:0:65879019'), ['"76561198092023766"', '"STEAM_1:0:65879019"']);

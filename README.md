@@ -1,34 +1,40 @@
 # CS2-VMPanel
 
-Modern VIP & admin management panel for community game servers — dashboard, servers, VIPs, admins, bundles, Steam-player store with PayPal / PayU / Razorpay checkout, VIP gifting, Discord notifications, audit logs, and automatic VIP expiry.
+VIP and admin management for CS2 community servers — a panel for servers, VIPs, admins and
+bundles, plus a Steam-login store with PayPal / PayU / Razorpay checkout, VIP gifting, Discord
+notifications, audit logs and automatic VIP expiry.
 
-![Login](Screen_Shots/01-login.png)
-![Dashboard](Screen_Shots/02-dashboard.png)
+![Login](Screen_Shots/01-login.jpg)
+![Manage VIP](Screen_Shots/02-managevip.jpg)
 
-> **Fork note:** this project is a modernized fork of [Summer-16/CSGO-VMPanel](https://github.com/Summer-16/CSGO-VMPanel) by Shivam Parashar (Summer Soldier), resecured and rebuilt (see [Credits](#credits)). The legacy `Server_Plugin/` (CS:GO SourceMod) and `Old_Content/` folders were removed in this fork — the panel manages all records in MySQL; point your game-server integration at the same database (schema in `app/db/migrations/`).
+> **Fork note.** A modernized fork of [Summer-16/CSGO-VMPanel](https://github.com/Summer-16/CSGO-VMPanel)
+> by Shivam Parashar (Summer Soldier) — see [Credits](#credits). The legacy `Server_Plugin/`
+> (CS:GO SourceMod) and `Old_Content/` folders are gone: the panel owns all records in MySQL, so
+> point your game-server integration at the same database (schema in `app/db/migrations/`).
 
 ## Features
 
-- **Dashboard** — servers, active VIPs/admins, sales & renewal counts, per-server VIP tables with expiry badges
-- **VIPs** — add / extend / delete per server, Steam profile lookup, search, bulk-aware forms
-- **Admins** — SourceMod flag management per server
-- **Servers & bundles** — multi-server VIP packages, slot/pricing/flag control
-- **Player store** — Steam login, owned-VIP status, buy/renew via PayPal, PayU, or Razorpay
-- **VIP gifting** — gift to another user by Steam profile link with server-verified receiver preview
-- **Payments** — server-side price/quote verification, order-replay protection, sale types (buy/renew/gift)
-- **Discord** — sale notifications + scheduled VIP/admin listing digests
+- **Dashboard** — server, VIP, admin and sales counters with per-server breakdowns
+- **VIPs** — add, extend, delete per server, with bulk forms and a Steam profile lookup
+- **Admins** — SourceMod flag management per server (`a`–`z` plus custom groups)
+- **Servers & bundles** — multi-server VIP packages with slot, pricing and flag control
+- **Player store** — Steam login, owned-VIP status, buy or renew through PayPal, PayU or Razorpay
+- **VIP gifting** — gift a purchase to another account behind a server-verified receiver check
+- **Payments** — server-side price and signature re-verification, replay protection, buy/renew/gift order types
+- **Discord** — sale notifications plus scheduled VIP/admin listing digests
 - **Audit logs & sales records** — super-admin only, paginated, quick-find filters
-- **Automation** — cron expiry cleanup + Discord digests, one-click manual refresh
-- **Security** — parameterized queries, transactional multi-server writes, CSRF tokens, RBAC-gated routes, rate-limited auth/payments, hardened sessions/cookies, safe error envelopes with request IDs, first-boot installer (no shipped credentials)
-- **UI** — dark/light modes, 5 panel themes, responsive mobile drawer, command palette (`Ctrl/⌘+K`), keyboard-first, reduced-motion support
-
-More screenshots: [`Screen_Shots/`](Screen_Shots/) (VIP management · settings · sales · mobile).
+- **Automation** — cron expiry cleanup, Discord digests, one-click RCON refresh
+- **Security** — parameterized queries, transactional multi-server writes, CSRF tokens, RBAC-gated
+  routes, rate-limited auth and payments, hardened sessions, safe error envelopes with request IDs,
+  and a first-boot installer that ships no credentials
+- **UI** — one fixed field-instrument theme (navy, copper, cyan), responsive down to phone width,
+  command palette (`Ctrl`/`⌘` + `K`), keyboard-first, reduced-motion aware
 
 ## Requirements
 
-- Node.js 22+ (`engines` enforced)
+- Node.js 22+ (`engines` is enforced)
 - MySQL 8.0+ or MariaDB 10.6+
-- Steam API key for player login ([get one](https://steamcommunity.com/dev))
+- A Steam Web API key for player login — [get one](https://steamcommunity.com/dev)
 - Optional: PayPal client ID, PayU merchant key/salt, Razorpay key ID/secret, Discord webhook URL
 
 ## Quick start — local
@@ -43,188 +49,160 @@ sudo mysql -e "CREATE DATABASE vmpanel CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 
 # 2. Panel
 npm install
-npm test               # smoke tests, no DB needed
-node server.js         # http://localhost:3535 → redirects to the /install wizard on first boot
-# The wizard writes app/config/config.json (mode 0600): DB credentials,
-# signing secrets, Steam key. No .env needed (still supported as legacy —
-# anything set there overrides config.json).
-npm run migrate        # apply schema migrations (indexes, gifting columns; no-ops until setup is complete)
+npm test      # 108 tests, no database needed
+npm start     # http://localhost:3535 → redirects to /install on first boot
 ```
 
-Default login is the admin account you create in the first-boot wizard below — there are no shipped credentials.
+The wizard writes `app/config/config.json` (mode `0600`) with your DB credentials, signing secrets
+and Steam key. There are no shipped credentials — the first admin is the one you create in the
+wizard. A legacy `.env` is still read if present, and anything in it overrides `config.json`.
 
-## Quick start — Docker (external MySQL, no bundled database)
+## Quick start — Docker
 
-The compose stack runs only the panel container using the prebuilt image from
-GHCR (published by [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)
-on every `main` push: `latest`, `main`, `sha-*`, plus `v*` version tags).
-Provision MySQL/MariaDB yourself (any host reachable from the container:
-managed DB, host package, or a separate container on your own network).
+The compose stack runs the panel only; it uses the prebuilt image from GHCR, published by
+[`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) on every push to `main`
+(tags: `latest`, `main`, `sha-*`, `v*`). Provide your own MySQL/MariaDB — anything reachable from the
+container: a managed instance, a host package, or a separate container on your network.
 
 ```bash
-docker compose pull            # prebuilt ghcr.io/shaikhnedab/cs2-vmpanel:latest
+cp app/config/example_config.json config.json   # bind mount needs the file to exist first
+docker compose pull                             # ghcr.io/shaikhnedab/cs2-vmpanel:latest
 docker compose up -d
 docker compose logs -f panel
-# → http://localhost:3535 (first visit redirects to the /install wizard)
+# → http://localhost:3535 (first visit redirects to /install)
 ```
 
-Pin a version with `IMAGE_TAG` (e.g. `IMAGE_TAG=v2.0.0 docker compose up -d`).
-Prefer building locally? Comment `image:` in `docker-compose.yml`, uncomment
-`build: .`, then `docker compose up -d --build`.
-First boot needs a config file on the host (otherwise the bind mount appears
-as a directory and the wizard cannot write it):
+Pin a release with `IMAGE_TAG` (`IMAGE_TAG=v2.0.0 docker compose up -d`), or build locally by
+commenting the `image:` line, uncommenting `build: .` and running `docker compose up -d --build`.
+The wizard fills in the mounted `config.json`, which survives restarts and rebuilds.
 
-```bash
-cp app/config/example_config.json config.json
-docker compose up -d
-docker compose logs -f panel
-# → http://localhost:3535 (first visit redirects to the /install wizard,
-#    which fills in config.json and keeps it across restarts and rebuilds)
-```
+Troubleshooting:
 
-> If `config.json` on the host is a **folder** instead of a file, the bind
-> mount beat you to it (Docker creates a directory when the source file is
-> missing at first `up`). Fix: `docker compose down && rmdir config.json &&
-> cp app/config/example_config.json config.json && docker compose up -d`.
-> The wizard also refuses with this exact remedy if it hits the directory.
+| Symptom | Cause | Fix |
+|---|---|---|
+| `config.json` is a **folder** on the host | Docker created a directory because the file was missing at first `up` | `docker compose down && rmdir config.json && cp app/config/example_config.json config.json && docker compose up -d` |
+| Crash-looping container | Stale image — `up` never re-pulls | `docker compose pull && docker compose up -d --force-recreate` |
+| Config edit had no effect | Config is read at boot | `docker compose up -d --force-recreate` |
 
-Container crash-looping? Pull fresh and recreate (stale images are the usual
-cause — `up` alone never re-pulls):
+## First boot
 
-```bash
-docker compose pull && docker compose up -d --force-recreate
-docker compose logs -f panel
-```
-
-## Install guide (first boot)
-
-Provision MySQL 8.0+ / MariaDB 10.6+ first and create an empty database plus a
-user with full rights on it (see [Quick start — local](#quick-start--local)
-for the SQL, or use your hoster's panel). The DB user needs `CREATE`/`ALTER`
-rights on first run (tables + migrations); plain read/write is enough after.
-
-Start the panel with **no `config.json`** (or `"setupComplete": false`):
+Provision the database first, with a user that has `CREATE`/`ALTER` rights on first run (plain
+read/write is enough afterwards). Then start the panel with **no `config.json`** — or with
+`"setupComplete": false` — and every route redirects to `/install` until setup finishes.
 
 ![Install wizard](Screen_Shots/00-install.jpg)
 
-1. Open `/install` — every other page redirects there until setup finishes.
-2. Fill DB host/port/user/password/name and press **Test connection**
-   (5s timeout; failures show a red banner with a generic message —
-   no driver details leak):
+1. Fill in DB host, port, user, password and name, then press **Test connection** (5s timeout).
+2. Choose the super-admin username (3–32 chars) and password (min 8, confirmed).
+3. Optionally add a Steam API key and the panel's public address. The public address is used for
+   Steam login callbacks — leave it empty to auto-detect from each request.
+4. Press **Install & continue**. The panel re-tests the connection, writes `config.json` (mode
+   `0600`), creates the tables, runs migrations, creates the super-admin (bcrypt cost 12), sets
+   `"setup_complete": true` and redirects to `/login`. The entrypoint hands the mounted
+   `config.json` to the app user, so no manual `chown` is needed.
 
-   ![Install connection error](Screen_Shots/00-install-error.jpg)
+Connection failures come back as a plain message with no driver details leaked:
 
-3. Pick the super-admin username (3–32 chars) + password (min 8 chars,
-   confirmed), add an optional Steam API key, and optionally the panel's
-   public address (used for Steam login callbacks — leave empty to
-   auto-detect), then press **Install & continue**.
-4. The panel re-tests the connection, writes `config.json` (mode `0600`),
-   creates tables, runs migrations, creates the super-admin (bcrypt cost 12),
-   flips `"setupComplete": true`, and redirects to `/login`. The container
-   entrypoint owns the mounted `config.json` to the app user automatically,
-   so no manual `chown` is needed on first boot.
+![Install connection error](Screen_Shots/00-install-error.jpg)
 
-After setup `/install*` returns `404` and never reopens — even if the
-database later goes down (those requests fail with a generic error instead).
-To re-run setup: stop the panel, delete `config.json`, start again.
+After setup, `/install*` returns `404` and never reopens — even if the database later goes down, in
+which case those requests fail with a generic error instead. To re-run setup: stop the panel, delete
+`config.json`, start again.
 
-> Back up `config.json` — it holds your DB password and signing secrets. It
-> is gitignored and never committed. `npm run migrate` stays idempotent and
-> no-ops (exit 0) until setup is complete. Existing `.env` installs keep
-> working untouched: anything set there overrides `config.json`.
+> Back up `config.json` — it holds your DB password and signing secrets. It is gitignored and never
+> committed. `npm run migrate` stays idempotent and no-ops (exit 0) until setup completes.
+
+### Steam ID lookup
+
+The lookup box on **Manage VIP** and the receiver box on the gift flow both accept any of these, and
+resolve them to one canonical SteamID64 before anything is stored:
+
+| Input | Example |
+|---|---|
+| Profile URL | `https://steamcommunity.com/id/shaikhnedab/` |
+| SteamID | `STEAM_1:0:65879019` |
+| SteamID64 | `76561198092023766` |
+| SteamID3 | `[U:1:131758038]` |
+| Account ID | `131758038` |
+| Steam / FiveM hex | `STEAM:110000107DA77D6`, `0x110000107DA77D6` |
+
+Anything unrecognised is rejected before it reaches the database, and the resolved ID comes from
+Steam, never from the pasted text.
 
 ### Game server refresh (RCON)
 
-VIP/admin changes push an RCON refresh to every game server automatically
-(`MANUAL REFRESH` replays it on demand). The default command is
-`css_viprefresh`; per server you can override it in Panel Settings → server
-forms — e.g. `sm_vipRefresh` for classic SourceMod servers.
-Empty means the default. Only letters, numbers, underscore and spaces
-(max 100 chars) are accepted. The game-query probe is best-effort only: if a
-server ignores UDP queries the panel still attempts RCON, and an RCON failure
-never rolls back the VIP/admin database write (the toast reports it instead).
+VIP and admin changes push an RCON refresh to every server automatically. The default command is
+`css_viprefresh`; override it per server in Panel Settings (e.g. `sm_vipRefresh` for classic
+SourceMod). Empty means the default, and only letters, numbers, underscore and spaces (max 100
+chars) are accepted. **Refresh all servers** in Panel Settings replays it on demand.
 
-Images are also built in CI: see [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) (publishes to GHCR on `main`/tags).
+The game-query probe is best-effort: if a server ignores UDP queries the panel still attempts RCON,
+and an RCON failure never rolls back the VIP/admin database write — the toast reports it instead.
 
 ### Payments — PayPal, PayU, Razorpay
 
-The store shows a gateway button only when it is configured, and amounts are
-re-checked server-side (price, currency, signature where applicable) before
-any VIP is granted. Prices come from each server's VIP Price / bundle.
+A gateway button only appears once that gateway is configured, and every amount is re-checked
+server-side (price, currency, signature where applicable) before a VIP is granted. Prices come from
+each server's VIP price or bundle.
 
-First: Panel Settings → set **Platform Currency** (`USD` or `INR`).
-PayU and Razorpay buttons appear only for `INR`; PayPal appears whenever its
-Client ID is set (charged in the platform currency). VIP gifting is on by
-default; set `GIFTING_ENABLED=false` (or `"gifting": { "enabled": false }`
-in `config.json`) to hide the gift option and refuse gift purchases.
+Set **Platform Currency** (`USD` or `INR`) in Panel Settings first. PayU and Razorpay require `INR`;
+PayPal works in any currency as long as its Client ID is set. VIP gifting is on by default — set
+`GIFTING_ENABLED=false` (or `"gifting": { "enabled": false }` in `config.json`) to remove the gift
+option and refuse gift purchases.
 
-#### PayPal (any currency; typical for USD)
+**PayPal** — [developer.paypal.com](https://developer.paypal.com) → Dashboard → Apps & Credentials →
+create a REST app (sandbox = test money, live = real money). Copy the **Client ID** into
+`config.json` → `payment_gateways.paypal.paypal_client_id` (or the `PAYPAL_CLIENT_ID` env var,
+which wins), recreate the container, and test with a sandbox buyer before swapping in the live ID.
 
-1. https://developer.paypal.com → Dashboard → Apps & Credentials → create a
-   REST app. Sandbox app = test money, Live app = real money.
-2. Copy the **Client ID** (single variable — no secret needed panel-side).
-3. In `config.json` → `payment_gateways.paypal`: set `paypal_client_id`
-   (or `PAYPAL_CLIENT_ID` env var — env wins), recreate the container, open
-   the store.
-4. Test with a PayPal sandbox buyer; go live by swapping in the Live Client ID.
+**PayU** (INR only) — copy the **paired** Test Key + Salt from the PayU dashboard (a test key with a
+live salt fails the hash check) into `config.json` → `payment_gateways.payU` with
+`"environment": "test"`, or use the `PAYU_*` env vars. Checkout opens purple in test and green in
+live; go live with `PAYU_ENV=live` plus the live pair.
 
-#### PayU (INR only)
+**Razorpay** (INR only) — generate a **Test** pair (`rzp_test_…`) in Dashboard → Settings → API Keys
+into `config.json` → `payment_gateways.razorPay`. Test mode follows the key prefix, not
+`RAZORPAY_ENV`. Go live by swapping in the `rzp_live_…` pair.
 
-1. PayU merchant dashboard → API access → copy the Test **Key** + **Salt**
-   (keep them paired — a test Key with a live Salt fails the hash check).
-2. In `config.json` → `payment_gateways.payU`: `enabled: true`,
-   `environment: "test"`, plus `merchantKey`/`merchantSalt` (or the
-   `PAYU_*` env vars — env wins); Platform Currency must be `INR`.
-3. Test with PayU's test cards — the checkout opens purple (test) vs green (live).
-4. Go live: `PAYU_ENV=live` plus the Live Key + Salt.
-Note: PayU return URLs follow `PUBLIC_BASE_URL` when set, else the address
-the buyer used (https-aware behind a proxy) — the panel must be publicly
-reachable or test payments cannot return.
+Return URLs follow `PUBLIC_BASE_URL` when set, otherwise the address the buyer used (HTTPS-aware
+behind a proxy) — so the panel must be publicly reachable or test payments cannot return.
 
-#### Razorpay (INR only)
+| Symptom | Check |
+|---|---|
+| Button missing | Gateway enabled? PayPal Client ID present? Currency matches (`INR` for PayU/Razorpay)? Container recreated after the edit? |
+| Checkout fails | Wrong-mode credentials — a test key on live checkout, or vice versa |
 
-1. Razorpay Dashboard → Settings → API Keys → generate a **Test** pair
-   (`rzp_test_…` ID + secret).
-2. In `config.json` → `payment_gateways.razorPay`: `enabled: true` plus
-   `keyId`/`keySecret` (or the `RAZORPAY_*` env vars — env wins);
-   currency `INR`. (`RAZORPAY_ENV` is accepted but test/live mode actually
-   follows the key prefix.)
-3. Test with Razorpay test cards/UPI — the panel verifies the payment
-   signature server-side before granting VIP.
-4. Go live: generate the **Live** pair (`rzp_live_…`) and swap both values.
+## Environment
 
-After any payment config change: `docker compose up -d --force-recreate`
-(config loads at boot; plain `up` is not enough).
-
-Troubleshooting: button missing → gateway enabled? (PayPal: Client ID
-present?) currency match (PayU/Razorpay need `INR`)? container recreated
-after the edit? Payment failing at checkout → wrong-mode credentials
-(test key on live checkout or vice versa).
-
-### Environment
+Every value can live in `config.json`; the matching environment variable always wins.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | yes | MySQL/MariaDB connection (external host — the compose stack bundles no database) |
-| `JWT_SECRET` `APP_SESSION_SECRET` | yes | Auth/session signing (≥32 random chars) |
+| `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | yes | MySQL/MariaDB connection (external — the compose stack bundles no database) |
+| `JWT_SECRET` `APP_SESSION_SECRET` | yes | Auth/session signing, ≥32 random characters |
 | `STEAM_API_KEY` | for player login | Steam Web API key |
-| `HOSTNAME` `SERVER_PORT` `APACHE_PROXY` | behind proxy | `true` behind nginx/Apache (trusts `X-Forwarded-Proto`; cookies are `Secure` automatically on HTTPS). Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
-| `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks (e.g. `https://vip.example.com`). Asked by the install wizard; empty = auto-detect from each request |
-| `CONFIG_PATH` | no | Override the config file location (default `app/config/config.json`) |
-| `GIFTING_ENABLED` | no | Set `false` to disable VIP gifting (`true` by default) |
+| `PORT` `SERVER_PORT` | no | Listen port (default `3535`); `docker-compose.yml` also maps the host port from `SERVER_PORT` |
+| `HOSTNAME` | no | Bind address (default `localhost`) |
+| `APACHE_PROXY` | behind a proxy | `true` trusts `X-Forwarded-Proto` and marks cookies `Secure` on HTTPS. Direct `http://host:port` access also works — cookies stay non-`Secure` there so sessions persist |
+| `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks. Asked by the wizard; empty = auto-detect per request |
+| `CONFIG_PATH` | no | Config file location (default `app/config/config.json`) |
+| `GIFTING_ENABLED` | no | `false` disables VIP gifting (default `true`) |
 | `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |
 | `SCHEDULE_DELETE_HOURS` `SCHEDULE_NOTIF_HOURS` | no | Cron intervals for expiry cleanup / Discord digests |
-| `LOG_LEVEL` | no | `INFO` (production) / `DEBUG` (request logging) |
+| `LOG_LEVEL` | no | `INFO` (default) or `DEBUG` (per-request logging) |
 
 Never commit `.env` or `config.json` — both are gitignored.
 
-## Reverse proxy hosting
+`GET /healthz` is always open (including mid-install) and returns `{"ok":true}` — use it for
+container health checks and uptime probes.
 
-TLS should terminate at the proxy; always run the panel with `APACHE_PROXY=true` behind one.
+## Reverse proxy
 
-**nginx** — [`deploy/nginx-vmPanel.conf`](deploy/nginx-vmPanel.conf) (validated with `nginx -t`):
+Terminate TLS at the proxy and always run the panel with `APACHE_PROXY=true` behind one.
+
+**nginx** — [`deploy/nginx-vmPanel.conf`](deploy/nginx-vmPanel.conf), validated with `nginx -t`:
 
 ```bash
 sudo cp deploy/nginx-vmPanel.conf /etc/nginx/sites-available/vmpanel
@@ -239,14 +217,31 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 sudo a2enmod proxy proxy_http headers rewrite ssl
 sudo cp deploy/apache-vmPanel.conf /etc/apache2/sites-available/vmpanel.conf
-sudo a2ensite vmpanel && sudo apache2ctl configtest && sudo systemctl reload apache2
+sudo a2ensite vmpanel && sudo apache2ctl configtest && sudo systemctl reload apache
 ```
 
-## Docs & internals
+## Layout
 
-- `app/db/migrations/` — versioned schema changes (`npm run migrate` is idempotent; it no-ops with exit 0 until setup is complete)
-- `tests/smoke.js` + `tests/install.js` — `npm test`
+```
+app/
+  config/          config.json loader (env always wins)
+  controllers/     request handlers
+  db/migrations/   versioned schema (npm run migrate, idempotent)
+  models/          data access
+  routes/          router + first-boot installer
+  utils/           Steam ID math, URL/secret helpers
+public/css/        nova-tokens.css (tokens) + vmp-design-system.css (components)
+views/             EJS templates
+tests/             smoke.js (no DB) + install.js
+```
+
+Run the suite with `npm test`. It needs no database, and the expected DB/RCON errors it logs are
+deliberate fixtures proving the error paths stay masked.
 
 ## Credits
 
-CS2-VMPanel is a fork of **[CSGO-VMPanel](https://github.com/Summer-16/CSGO-VMPanel)** by **Shivam Parashar (Summer Soldier)**, which created the original panel, plugin, and feature set. This fork modernized it: full security overhaul, hardened payments, VIP gifting, new Nova UI with dark/light modes, Docker support, and migrations — while keeping the plugin database contract intact. Licensed under [GPL-3.0-or-later](LICENSE), same as upstream.
+CS2-VMPanel is a fork of **[CSGO-VMPanel](https://github.com/Summer-16/CSGO-VMPanel)** by **Shivam
+Parashar (Summer Soldier)**, which created the original panel, plugin and feature set. This fork
+modernized it: security overhaul, hardened payments, VIP gifting, the field-instrument UI, Docker
+support and migrations — while keeping the plugin's database contract intact. Licensed under
+[GPL-3.0-or-later](LICENSE), same as upstream.

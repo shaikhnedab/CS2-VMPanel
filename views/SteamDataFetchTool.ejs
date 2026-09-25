@@ -13,8 +13,8 @@
       <form onsubmit="return false">
         <div class="vmp-fetch-form">
           <div class="form-group bmd-form-group">
-            <input type="url" name="steam_URL" class="form-control" id="steam_URL" required
-              placeholder="Paste user's Steam profile URL…" autocomplete="off">
+            <input type="text" name="steam_URL" class="form-control" id="steam_URL" required
+              placeholder="Paste a Steam profile URL, SteamID64, STEAM_1:0:…, [U:1:…], account ID, or STEAM:…" autocomplete="off">
           </div>
           <button type="button" onclick="profileUrlToDataFetcher($('#steam_URL').val())"
             class="btn btn-success">Fetch data</button>

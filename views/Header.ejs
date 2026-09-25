@@ -42,7 +42,7 @@ return heading
   <link rel="apple-touch-icon" sizes="76x76" href="./images/icon.png">
   <link rel="icon" type="image/png" href="./images/favicon.ico">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
-  <meta name="theme-color" content="#0a0d14" id="vmpThemeColor" />
+  <meta name="theme-color" content="#0a1120" id="vmpThemeColor" />
   <meta name="csrf-token" content="<%= csrfToken || '' %>">
   <title>VMP — <%= getPageHeading(currentURL) %></title>
   <meta content='width=device-width, initial-scale=1.0, shrink-to-fit=no'
@@ -50,11 +50,11 @@ return heading
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" type="text/css"
-    href="https://fonts.googleapis.com/css?family=Inter:400,500,600,700,800|Material+Icons" />
+    href="https://fonts.googleapis.com/css?family=Space+Grotesk:wght@500;600;700|IBM+Plex+Mono:wght@400;500;600|Material+Icons" />
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/latest/css/font-awesome.min.css">
   <link href="./css/material-dashboard.css" rel="stylesheet" />
-  <link href="./css/nova-tokens.css?v=4" rel="stylesheet" />
-  <link href="./css/vmp-design-system.css?v=4" rel="stylesheet" />
+  <link href="./css/nova-tokens.css?v=19" rel="stylesheet" />
+  <link href="./css/vmp-design-system.css?v=19" rel="stylesheet" />
 
   <script src="./js/theme/jquery.min.js"></script>
   <script src="./js/theme/popper.min.js"></script>
@@ -70,31 +70,13 @@ return heading
     };
   </script>
   <script>
-    try {
-      if (localStorage.getItem('vmp-theme') === 'light') {
-        document.documentElement.classList.add('vmp-light-pre');
-      }
-    } catch (e) {}
-    function vmpToggleTheme() {
-      var light = document.body.classList.toggle('vmp-light');
-      try { localStorage.setItem('vmp-theme', light ? 'light' : 'dark'); } catch (e) {}
-      var meta = document.getElementById('vmpThemeColor');
-      if (meta) meta.setAttribute('content', light ? '#eef1f8' : '#0a0d14');
-    }
-    document.addEventListener('DOMContentLoaded', function () {
-      try {
-        if (localStorage.getItem('vmp-theme') === 'light') {
-          document.body.classList.add('vmp-light');
-          var meta = document.getElementById('vmpThemeColor');
-          if (meta) meta.setAttribute('content', '#eef1f8');
-        }
-      } catch (e) {}
-    });
+    // The panel uses one fixed HVAC-inspired field-instrument theme.
+    // Theme state is intentionally not persisted or switchable.
   </script>
 
 </head>
 
-<body class="dark-edition" data-theme="<%= (panelSetting && panelSetting.color_theme) || 'primary' %>">
+<body class="dark-edition" data-theme="primary">
   <a class="skip-link" href="#vmpMain">Skip to main content</a>
   <div id="vmpNavScrim" onclick="vmpToggleNav(false)"></div>
   <%if(typeof defaultCredWarning !== 'undefined' && defaultCredWarning){%>
@@ -106,9 +88,7 @@ return heading
   </div>
   <%}%>
   <div class="wrapper ">
-    <div class="sidebar"
-      data-color="<%=panelSetting.color_theme=='primary'?'purple':panelSetting.color_theme=='danger'?'danger':panelSetting.color_theme=='success'?'green':panelSetting.color_theme=='warning'?'orange':panelSetting.color_theme=='info'?'azure':''%>"
-      data-background-color="black">
+    <div class="sidebar" data-color="purple" data-background-color="black">
       <div class="logo">
         <a href="/" class="simple-text logo-normal">
           <img class="img" height="42px" src="./images/icon.png" alt="CS2-VMPanel logo" id="icon_logo_id">
@@ -210,9 +190,6 @@ return heading
       <div class="vmp-top-actions">
         <a class="nav-link" href="javascript:void(0)" id="vmpPaletteBtn" onclick="vmpTogglePalette(true)" title="Commands (Ctrl/⌘+K)" aria-label="Open command palette">
           <i class="material-icons" aria-hidden="true">terminal</i>
-        </a>
-        <a class="nav-link" href="javascript:void(0)" id="vmpThemeToggle" onclick="vmpToggleTheme()" title="Toggle light / dark mode" aria-label="Toggle light or dark mode">
-          <i class="material-icons" aria-hidden="true">brightness_6</i>
         </a>
       </div>
 

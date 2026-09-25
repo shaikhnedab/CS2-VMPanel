@@ -23,7 +23,7 @@ const logger = require('../modules/logger')('Panel Setting Model');
 var db = require('../db/db_bridge');
 const config = require('../config');
 const table = config.settingTable
-const valueArray = [["color_theme", "danger"],
+const valueArray = [["color_theme", "primary"],
 ["dash_vip_show", "1"],
 ["dash_admin_show", "1"],
 ["webhook_url", ""],

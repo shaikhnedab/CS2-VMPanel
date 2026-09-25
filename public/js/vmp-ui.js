@@ -271,7 +271,6 @@
     { icon: 'manage_history', label: 'Audit Logs', hint: 'admin', href: '/auditlogs', roles: ['super'] },
     { icon: 'tune', label: 'Panel Settings', hint: 'admin', href: '/panelsetting', roles: ['admin'] },
     { icon: 'login', label: 'Log In', hint: 'page', href: '/login', roles: ['guest'] },
-    { icon: 'brightness_6', label: 'Toggle Light / Dark Mode', hint: 'action', roles: ['guest', 'steam', 'admin'], run: function () { window.vmpToggleTheme(); } },
     { icon: 'cached', label: 'Refresh All Servers Now', hint: 'action', roles: ['admin'], run: function () {
       fetch('/performmanualrefresh', { method: 'POST' }).then(function (r) { return r.json(); })
         .then(function (res) { window.vmpToast(res && res.success ? 'Servers refreshed' : 'Refresh failed', res && res.success ? 'success' : 'warning'); })

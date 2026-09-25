@@ -12,6 +12,9 @@ ok('isSteamID rejects garbage', () => assert.ok(!Conv.isSteamID('STEAM_1:0:abc; 
 ok('isSteamID64 valid', () => assert.ok(Conv.isSteamID64('76561198012345678')));
 ok('isSteamID3 valid', () => assert.ok(Conv.isSteamID3('[U:1:123456]')));
 ok('fromSteamID3', () => assert.strictEqual(Conv.fromSteamID3('[U:1:246913]'), 'STEAM_0:1:123456'));
+ok('account id -> canonical steamid64', () => assert.strictEqual(Conv.toCanonical64('131758038'), '76561198092023766'));
+ok('fivem hex -> canonical steamid64', () => assert.strictEqual(Conv.toCanonical64('STEAM:110000107DA77D6'), '76561198092023766'));
+ok('0x hex -> canonical steamid64', () => assert.strictEqual(Conv.toCanonical64('0x110000107DA77D6'), '76561198092023766'));
 
 // 2. Gift recipient normalization mirrors userDashboard logic
 function normalizeRecipient(raw) {
@@ -25,10 +28,17 @@ ok('gift normalize STEAM_', () => assert.strictEqual(normalizeRecipient('STEAM_1
 ok('gift normalize 64', () => assert.strictEqual(normalizeRecipient('76561197960265730'), 'STEAM_1:0:1'));
 ok('gift normalize STEAM3', () => assert.strictEqual(normalizeRecipient('[U:1:246913]'), 'STEAM_0:1:123456'));
 ok('gift rejects injection', () => assert.throws(() => normalizeRecipient('STEAM_1:0:1"; DROP TABLE x;--')));
+ok('gift accepts account and Steam hex IDs', () => {
+  const gift = require('../app/controllers/giftRecipient');
+  assert.strictEqual(gift.normalizeInput('131758038').steamId64, '76561198092023766');
+  assert.strictEqual(gift.normalizeInput('STEAM:110000107DA77D6').steamId64, '76561198092023766');
+});
 
 // 3. Client gift regex mirrors server (myDashboard vmpGetGiftFields)
-const GIFT_RE = /^(STEAM_[0-5]:[01]:\d{1,12}|\d{17}|\[U:1:\d{1,12}\])$/;
+const GIFT_RE = /^(STEAM_[0-5]:[01]:\d{1,12}|\d{17}|\[U:1:\d{1,12}\]|\d{1,10}|STEAM:(?:0:)?[0-9a-f]{1,17}|0x[0-9a-f]{1,17})$/i;
 ok('client regex accepts STEAM_', () => assert.ok(GIFT_RE.test('STEAM_1:0:123456')));
+ok('client regex accepts account id', () => assert.ok(GIFT_RE.test('131758038')));
+ok('client regex accepts fivem hex', () => assert.ok(GIFT_RE.test('STEAM:110000107DA77D6')));
 ok('client regex rejects SQLi', () => assert.ok(!GIFT_RE.test('STEAM_1:0:1" OR "1"="1')));
 
 // 4. Table-name allowlist mirrors vipModel

@@ -124,11 +124,11 @@ function slotId(prefix, tblOrName, i) {
                   <label for="vmpGiftRecipient" class="vmp-field-label" style="margin-top:0">Receiver's Steam profile link or ID</label>
                   <div class="vmp-fetch-form" style="margin-top:0">
                     <div class="form-group bmd-form-group">
-                      <input type="text" id="vmpGiftRecipient" name="gift_recipient" class="form-control mono" placeholder="https://steamcommunity.com/id/… or 7656119…" autocomplete="off" spellcheck="false" oninput="vmpGiftInputChanged()">
+                      <input type="text" id="vmpGiftRecipient" name="gift_recipient" class="form-control mono" placeholder="Profile URL, SteamID64 (7656119…), STEAM_1:0:…, [U:1:…], account ID, or STEAM:…" autocomplete="off" spellcheck="false" oninput="vmpGiftInputChanged()">
                     </div>
                     <button type="button" class="btn btn-info" id="vmpGiftVerifyBtn" onclick="vmpVerifyGiftRecipient()">Verify receiver</button>
                   </div>
-                  <small class="text-muted">Accepts profile links, STEAM_1:X:Y, SteamID64, and [U:1:N]. Gifts cannot renew, and the receiver must not already hold VIP there.</small>
+                  <small class="text-muted">Accepts profile links, SteamID64, STEAM_1:X:Y, [U:1:N], account IDs, and STEAM: hex. Gifts cannot renew, and the receiver must not already hold VIP there.</small>
                   <div id="vmpGiftReceiverPreview" style="display:none;margin-top:12px" aria-live="polite"></div>
                 </div>
               </div>

@@ -244,7 +244,6 @@ function fetchPSettingajax() {
           $('#community_website').val(settingObj.community_website);
           $('#platform_currency').val(settingObj.platform_currency);
         }
-        $("input[name=color_theme][value=" + settingObj.color_theme + "]").prop('checked', true);
         $("input[name=dash_vip_show][value=" + settingObj.dash_vip_show + "]").prop('checked', true);
         $("input[name=dash_admin_show][value=" + settingObj.dash_admin_show + "]").prop('checked', true);
         $('#community_name').val(settingObj.community_name);

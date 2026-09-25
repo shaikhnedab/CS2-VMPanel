@@ -467,6 +467,919 @@ div[data-notify="container"] [data-notify="dismiss"] {
   font-size: 18px !important; color: var(--muted) !important; opacity: .85 !important;
 }
 div[data-notify="container"] [data-notify="progressbar"] { display: none !important; }
+
+
+/* ============================================================
+   FIELD-INSTRUMENT PASS
+   The rules below intentionally supersede the earlier Nova skin
+   while keeping its class names and behavior contracts intact.
+   ============================================================ */
+
+/* ---------- buttons and motion restraint ---------- */
+.vmp-reveal,
+.vmp-reveal.vmp-in {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+.vmp-ripple { display: none !important; }
+
+.btn {
+  border-radius: var(--r-sm) !important;
+  font-family: var(--font-display) !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+  padding: 9px 15px !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: none !important;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease) !important;
+}
+.btn:hover {
+  background: var(--panel-2) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--text) !important;
+  transform: none !important;
+  filter: none !important;
+}
+.btn:active { transform: none !important; }
+.btn.btn-primary, .btn-primary, .btn.btn-info, .btn-info {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: none !important;
+}
+.btn.btn-primary:hover, .btn-primary:hover, .btn.btn-info:hover, .btn-info:hover {
+  background: var(--accent-strong) !important;
+  border-color: var(--accent-strong) !important;
+}
+.btn.btn-success, .btn-success {
+  background: var(--respawn) !important;
+  border-color: var(--respawn) !important;
+  color: #062419 !important;
+  box-shadow: none !important;
+}
+.btn.btn-warning, .btn-warning {
+  background: var(--flash) !important;
+  border-color: var(--flash) !important;
+  color: #2b1c05 !important;
+  box-shadow: none !important;
+}
+.btn.btn-danger, .btn-danger {
+  background: var(--headshot) !important;
+  border-color: var(--headshot) !important;
+  color: #2b0b0b !important;
+  box-shadow: none !important;
+}
+.btn.btn-default, .btn-default {
+  background: var(--surface-2) !important;
+  border-color: var(--line) !important;
+  color: var(--text) !important;
+}
+.btn-fab, .btn.btn-fab {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  border-radius: var(--r-sm) !important;
+}
+
+/* ---------- operations rail ---------- */
+.sidebar {
+  background: var(--ops) !important;
+  border-right: 1px solid var(--line);
+  box-shadow: none;
+}
+.sidebar .logo {
+  min-height: 76px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px 14px !important;
+}
+.sidebar .logo .simple-text {
+  gap: 10px;
+  color: var(--text) !important;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+  font-size: 14px !important;
+  letter-spacing: 0.1em;
+}
+.sidebar .logo img {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 9px;
+  filter: none !important;
+  animation: none !important;
+}
+.sidebar .nav { gap: 3px; padding: 14px 10px; }
+.sidebar .nav-link {
+  min-height: 42px;
+  border-radius: var(--r-sm) !important;
+  padding: 10px 12px !important;
+  color: var(--muted) !important;
+  border: 1px solid transparent;
+  gap: 11px;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease) !important;
+}
+.sidebar .nav-link i { color: var(--muted-2); transition: color var(--t-fast) var(--ease); }
+.sidebar .nav-link:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--line);
+  color: var(--text) !important;
+  transform: none !important;
+}
+.sidebar .nav-link:hover i { color: var(--accent); transform: none; }
+.sidebar .nav-item.active .nav-link {
+  background: var(--accent-wash) !important;
+  border-color: var(--accent);
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+.sidebar .nav-item.active .nav-link::before {
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  background: var(--accent);
+}
+.sidebar .nav-item.active .nav-link i { color: var(--accent); }
+
+/* ---------- compact topbar ---------- */
+.navbar.navbar-transparent {
+  background: transparent !important;
+  padding-top: 14px !important;
+}
+.navbar .container-fluid {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: none;
+  padding: 7px 12px !important;
+  margin: 0 14px;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.navbar.vmp-scrolled .container-fluid { border-color: var(--line-strong); box-shadow: none; }
+.navbar .navbar-brand {
+  color: var(--text) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  padding: 5px 0 !important;
+}
+.navbar .nav-link {
+  color: var(--muted) !important;
+  border-radius: var(--r-sm);
+}
+.navbar .nav-link:hover { color: var(--text) !important; background: var(--surface-2); }
+.vmp-top-actions { gap: 3px; }
+.vmp-top-actions .nav-link { padding: 8px !important; }
+.vmp-user-chip {
+  gap: 8px;
+  padding: 4px 9px 4px 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+.vmp-user-chip .vmp-avatar {
+  width: 27px;
+  height: 27px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.main-panel > .content { padding-top: 98px !important; }
+
+/* ---------- cards and readouts ---------- */
+.card {
+  background: var(--surface) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: none !important;
+  color: var(--text);
+  transition: border-color var(--t-fast) var(--ease) !important;
+}
+.card:hover { transform: none !important; border-color: var(--line-strong) !important; }
+.card .card-header {
+  padding: 18px 20px 14px !important;
+  border-radius: var(--r-lg) var(--r-lg) 0 0 !important;
+  border-bottom: 1px solid var(--line);
+}
+.card .card-body { padding: 20px !important; }
+.card .card-footer { border-top: 1px solid var(--line); background: transparent !important; }
+.card .card-title { color: var(--text) !important; }
+.card .card-category { color: var(--muted) !important; }
+.vmp-stat { overflow: hidden; }
+.vmp-stat::after { display: none; }
+.vmp-stat-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: var(--accent-wash) !important;
+  border: 1px solid var(--accent);
+  color: var(--accent) !important;
+  box-shadow: none !important;
+  transition: none !important;
+}
+.vmp-stat-icon i, .vmp-stat-icon .material-icons, .vmp-stat-icon .fa { color: currentColor !important; }
+.card:hover .vmp-stat-icon { transform: none !important; }
+.vmp-stat-icon.green { background: rgba(62, 211, 153, 0.1) !important; border-color: var(--respawn); color: var(--respawn) !important; }
+.vmp-stat-icon.amber { background: rgba(234, 179, 90, 0.1) !important; border-color: var(--flash); color: var(--flash) !important; }
+.vmp-stat-icon.blue { background: var(--ice-wash) !important; border-color: var(--ice); color: var(--ice) !important; }
+.vmp-stat-icon.pink { background: var(--accent-wash) !important; border-color: var(--accent); color: var(--accent) !important; }
+.vmp-stat-num { font-family: var(--font-mono); font-size: 28px; font-weight: 500; letter-spacing: -0.04em; }
+.vmp-stat-label { color: var(--muted); font-size: 11px; letter-spacing: 0.1em; }
+
+/* ---------- tables ---------- */
+.table-responsive { border-radius: var(--r-sm); }
+.table { color: var(--text); margin-bottom: 0; }
+.table thead th {
+  color: var(--muted) !important;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line) !important;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  font-family: var(--font-display);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.table thead th:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.table thead th:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.table tbody td { border-top: 1px solid var(--line-soft) !important; vertical-align: middle; }
+.table tbody tr { transition: background-color var(--t-fast) var(--ease); }
+.table tbody tr:hover { background: var(--accent-wash) !important; }
+.table .mono, .table code { font-family: var(--font-mono); font-size: 11.5px; }
+.vmp-scroller { border-radius: var(--r-sm); overscroll-behavior: contain; }
+.vmp-scroller::-webkit-scrollbar, .table-responsive::-webkit-scrollbar { height: 8px; width: 8px; }
+.vmp-scroller::-webkit-scrollbar-thumb, .table-responsive::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+.vmp-scroller::-webkit-scrollbar-track, .table-responsive::-webkit-scrollbar-track { background: transparent; }
+@media (min-width: 992px) { .vmp-table-compact td, .vmp-table-compact th { padding: 9px 11px !important; } }
+
+/* ---------- badges and controls ---------- */
+.vmp-badge {
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--surface-2);
+}
+.vmp-badge.ok { color: var(--respawn); border-color: rgba(62, 211, 153, 0.35); background: rgba(62, 211, 153, 0.1); }
+.vmp-badge.warn { color: var(--flash); border-color: rgba(234, 179, 90, 0.35); background: rgba(234, 179, 90, 0.1); }
+.vmp-badge.bad { color: var(--headshot); border-color: rgba(239, 95, 95, 0.35); background: rgba(239, 95, 95, 0.1); }
+.vmp-badge.info { color: var(--ice); border-color: rgba(79, 210, 198, 0.35); background: var(--ice-wash); }
+.vmp-badge.violet { color: var(--accent); border-color: var(--accent); background: var(--accent-wash); }
+.vmp-dot.pulse { animation: none; }
+
+.form-control {
+  background: var(--inset) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 10px 12px !important;
+  font-family: var(--font-body);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease) !important;
+}
+.form-control:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-wash) !important;
+}
+.form-control::placeholder { color: var(--muted-2); }
+.form-control:disabled, .form-control[readonly] { background: var(--panel-2) !important; color: var(--muted) !important; }
+select.form-control { background-color: var(--inset) !important; color: var(--text) !important; }
+select.form-control option { background: var(--panel); color: var(--text); }
+label, .bmd-label-floating { color: var(--muted) !important; }
+.bmd-form-group .bmd-label-floating { top: calc(50% - 5px); transform: translateY(-50%); }
+.bmd-form-group.is-filled .bmd-label-floating,
+.bmd-form-group.is-focused .bmd-label-floating { top: -1rem; transform: none; }
+.form-group { margin-bottom: 16px !important; }
+.vmp-field-label { color: var(--text); font-size: 12px; letter-spacing: 0.02em; margin: 18px 0 8px; }
+.vmp-hint { color: var(--muted); font-size: 12px; }
+
+/* material-dashboard paints every inline <code> hot pink (#e91e63), which
+   reads as an error state on the navy field background. Code is a label,
+   not a warning. */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--accent) !important;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+a > code { color: inherit !important; }
+pre code { background: none; border: 0; padding: 0; color: inherit !important; }
+
+.form-check { padding-left: 0 !important; margin-bottom: 6px !important; }
+.form-check .form-check-label {
+  gap: 9px;
+  min-height: 36px;
+  padding: 6px 9px !important;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  color: var(--text) !important;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease) !important;
+}
+.form-check .form-check-label:hover { background: var(--surface-2); border-color: var(--line); }
+/* material-dashboard hides the native control and paints its own:
+   .form-check .form-check-input { opacity:0; position:absolute; z-index:-1;
+   width:0; height:0; overflow:hidden; pointer-events:none }.
+   This skin draws the box itself, so every one of those must be undone —
+   otherwise the tick box renders behind its own label and looks missing. */
+.form-check .form-check-input {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-block;
+  position: relative !important;
+  z-index: auto !important;
+  opacity: 1 !important;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px;
+  overflow: visible !important;
+  pointer-events: auto !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+  margin: 0 !important;
+  cursor: pointer;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong) !important;
+  background: var(--inset);
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease) !important;
+}
+.form-check .form-check-input:hover { border-color: var(--accent) !important; }
+.form-check .form-check-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.form-check .form-check-input:disabled { opacity: 0.45 !important; cursor: not-allowed; }
+.form-check .form-check-input:checked { background: var(--accent) !important; border-color: var(--accent) !important; box-shadow: none; }
+/* tick geometry for the 20px box */
+.form-check .form-check-input:checked::after {
+  content: "";
+  position: absolute;
+  left: 5.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(43deg);
+  animation: none;
+}
+.form-check .form-check-sign { display: none !important; }
+.vmp-check-grid { display: flex; flex-wrap: wrap; gap: 5px 8px; }
+
+/* The Settings yes/no radios and theme swatches are moved into .vmp-seg /
+   .vmp-swatches, but those wrappers sit inside a .form-check — so the reset
+   above would expose their raw inputs. Hide them again, keeping a focus ring
+   for keyboard users. */
+.vmp-seg .form-check-input,
+.vmp-swatches .form-check-input {
+  position: absolute !important;
+  z-index: auto !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+.vmp-seg .form-check-input:focus-visible + .form-check-label,
+.vmp-swatches .form-check-input:focus-visible + .form-check-label {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Flag/level tables: a compact tick column. Each checkbox cell used to carry
+   a .col-md-12 wrapper, which added 30px of grid padding to every row. */
+.vmp-flags-table { margin-bottom: 0; }
+.vmp-flags-table td { padding: 6px 10px; vertical-align: middle; }
+.vmp-flags-table td:first-child,
+.vmp-flags-table th:first-child { width: 44px; text-align: center; padding-left: 6px; padding-right: 6px; }
+.vmp-flags-table .form-check { margin: 0 !important; padding: 0 !important; }
+.vmp-flags-table .form-check .form-check-label { min-height: 0 !important; padding: 0 !important; border: 0; gap: 0; }
+.vmp-flags-table .form-check .form-check-input { margin: 0 auto !important; }
+.vmp-flags-table td .form-control { height: 34px; font-size: 12.5px; }
+
+.vmp-seg { border-radius: var(--r-sm); background: var(--inset); border-color: var(--line); }
+.vmp-seg .form-check-label { border-radius: 4px !important; padding: 7px 14px !important; }
+.vmp-seg .form-check-input:checked + .form-check-label { background: var(--accent) !important; color: var(--accent-ink) !important; box-shadow: none; }
+.vmp-swatches .form-check-label { border-radius: var(--r-sm) !important; background: var(--inset); }
+.vmp-swatches .form-check-label::before { border-radius: 4px; box-shadow: none; }
+.vmp-swatches input[value="danger"] + .form-check-label::before { background: var(--headshot); }
+.vmp-swatches input[value="primary"] + .form-check-label::before { background: var(--accent); }
+.vmp-swatches input[value="warning"] + .form-check-label::before { background: var(--flash); }
+.vmp-swatches input[value="success"] + .form-check-label::before { background: var(--respawn); }
+.vmp-swatches input[value="info"] + .form-check-label::before { background: var(--ice); }
+.vmp-swatches .form-check-input:checked + .form-check-label { border-color: var(--accent) !important; box-shadow: none; }
+.vmp-switch .vmp-track { background: var(--inset); border-color: var(--line-strong); }
+.vmp-switch input:checked + .vmp-track { background: var(--accent); box-shadow: none; }
+
+/* ---------- lookup and page structure ---------- */
+.vmp-fetch-id { width: 54px; height: 54px; border-radius: 10px; background: var(--accent-wash); border: 1px solid var(--accent); color: var(--accent); box-shadow: none; }
+.vmp-fetch-meta .vmp-fetch-name { color: var(--text); font-size: 15px; }
+.vmp-fetch-meta .vmp-fetch-id-text { color: var(--muted); font-size: 12px; }
+.vmp-fetch-form, .vmp-searchbar { gap: 8px; }
+.vmp-searchbar .form-control { flex: 1 1 180px; }
+.vmp-auth-wrap { min-height: 70vh; }
+.vmp-auth-hero {
+  background: var(--panel) !important;
+  border-color: var(--line-strong) !important;
+  border-radius: var(--r-lg);
+  padding: 32px 28px;
+}
+.vmp-auth-hero::before {
+  content: none !important;
+  display: none !important;
+}
+.vmp-auth-hero h2 { color: var(--text); }
+.vmp-auth-hero .grad-text { color: var(--accent); background: none; -webkit-background-clip: initial; background-clip: initial; }
+.vmp-steam-btn { background: #1b2838 !important; border: 1px solid #2a475e !important; border-radius: var(--r-sm) !important; box-shadow: none !important; }
+.vmp-steam-btn:hover { transform: none; box-shadow: none; filter: brightness(1.08); }
+
+/* ---------- tabs, overlays, and feedback ---------- */
+.nav-tabs { border-bottom-color: var(--line) !important; }
+.nav-tabs .nav-link { color: var(--muted) !important; font-family: var(--font-display); }
+.nav-tabs .nav-link.active { color: var(--text) !important; }
+.nav-tabs .nav-link.active::after { background: var(--accent); animation: none; }
+.card-header .nav-tabs .nav-link { padding: 9px 12px !important; }
+.dropdown-menu {
+  background: var(--surface-solid) !important;
+  border-color: var(--line-strong) !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: var(--shadow);
+  animation: none;
+}
+.dropdown-menu a, .dropdown-item { color: var(--text) !important; }
+.dropdown-menu a:hover, .dropdown-item:hover { background: var(--accent-wash) !important; }
+.server-picker > .dropdown-menu.show { top: calc(100% + 5px) !important; }
+.modal-content { background: var(--surface-solid) !important; border-color: var(--line-strong) !important; border-radius: var(--r-lg) !important; box-shadow: var(--shadow); }
+.modal.fade .modal-dialog { transform: none !important; transition: opacity var(--t-fast) var(--ease) !important; }
+.modal.show .modal-dialog { transform: none !important; }
+.modal-backdrop.show { opacity: 0.72 !important; }
+.pagination .page-link { background: var(--surface-2) !important; border-color: var(--line) !important; border-radius: var(--r-sm) !important; }
+.pagination .page-link:hover { border-color: var(--accent) !important; transform: none; }
+.pagination .page-item.active .page-link { background: var(--accent) !important; color: var(--accent-ink) !important; box-shadow: none; }
+.loading::before { border-color: var(--line-strong); border-top-color: var(--accent); }
+.vmp-empty { color: var(--muted); }
+.vmp-empty h5 { color: var(--text); }
+div[data-notify="container"], .alert[data-notify="container"] { background: var(--surface-solid) !important; border-color: var(--line-strong) !important; border-radius: var(--r-sm) !important; box-shadow: var(--shadow); animation: none !important; }
+
+/* ---------- palette, footer, and banner ---------- */
+#vmpPalette { background: var(--surface-solid); border-color: var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow); }
+body.vmp-palette-open #vmpPalette { animation: none; }
+#vmpPaletteInput { font-family: var(--font-body); }
+#vmpPaletteInput:focus { border-bottom-color: var(--accent); }
+.vmp-pal-item { border-radius: var(--r-sm); }
+.vmp-pal-item[aria-selected="true"], .vmp-pal-item:hover { background: var(--accent-wash); }
+.vmp-pal-item[aria-selected="true"] .material-icons { color: var(--accent); }
+.footer { border-top: 1px solid var(--line) !important; color: var(--muted) !important; }
+.footer a:hover { color: var(--accent) !important; }
+.vmp-default-cred-alert { background: rgba(234, 179, 90, 0.1); border-color: rgba(234, 179, 90, 0.55); border-radius: var(--r-sm); color: var(--text); }
+
+/* ---------- light-mode corrections ---------- */
+body.vmp-light .card .card-title, body.vmp-light h1, body.vmp-light h2, body.vmp-light h3,
+body.vmp-light h4, body.vmp-light h5 { color: var(--text) !important; }
+body.vmp-light .card-category, body.vmp-light .vmp-hint, body.vmp-light .vmp-stat-label,
+body.vmp-light .table thead th, body.vmp-light .vmp-fetch-meta .vmp-fetch-id-text,
+body.vmp-light .footer { color: var(--muted) !important; }
+body.vmp-light .table { color: var(--text); }
+body.vmp-light .table tbody tr:hover { background: var(--accent-wash) !important; }
+body.vmp-light .form-check .form-check-label { color: var(--text) !important; }
+body.vmp-light .navbar .navbar-brand { color: var(--text) !important; }
+body.vmp-light .navbar .nav-link { color: var(--muted) !important; }
+body.vmp-light .modal-content, body.vmp-light .dropdown-menu, body.vmp-light div[data-notify="container"] { background: #fff !important; color: var(--text) !important; }
+body.vmp-light .dropdown-menu a, body.vmp-light .dropdown-item { color: var(--text) !important; }
+body.vmp-light .pagination .page-link { color: var(--text) !important; }
+body.vmp-light .vmp-auth-hero h2, body.vmp-light #vmpPaletteInput, body.vmp-light .vmp-pal-item { color: var(--text); }
+body.vmp-light hr { border-color: var(--line); }
+
+/* ---------- responsive field layout ---------- */
+@media (max-width: 991px) {
+  .main-panel > .content { padding-top: 86px !important; }
+  .navbar .container-fluid { margin: 0 8px; padding: 7px 9px !important; }
+  .navbar .navbar-brand { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .card-body { padding: 16px !important; }
+  .card .card-header { padding: 16px 16px 12px !important; }
+  .btn { padding: 9px 13px !important; }
+  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-responsive table { min-width: 620px; }
+  .vmp-auth-hero { padding: 26px 20px; }
+  .vmp-stat-num { font-size: 24px; }
+  #vmpPalette { top: 6vh; }
+}
+
+
+.main-panel > .content > .container-fluid {
+  max-width: var(--container);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+.dark-edition .sidebar[data-background-color="black"] { background: var(--ops) !important; opacity: 1 !important; }
+.dark-edition .sidebar[data-background-color="black"] .nav li.active > a,
+.dark-edition .sidebar[data-color] .nav li.active > a { background: var(--accent-wash) !important; color: var(--text) !important; box-shadow: none !important; }
+.dark-edition .sidebar[data-background-color="black"] .nav li.active > a i { color: var(--accent) !important; }
+
+
+/* ============================================================
+   LAYOUT + TYPE CONSISTENCY PASS
+   Keeps controls aligned across every form and removes the
+   artificial viewport height that made auth pages scroll.
+   ============================================================ */
+:root {
+  --control-height: 42px;
+  --control-height-sm: 36px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-body: 14px;
+  --text-title: 16px;
+  --text-display: 20px;
+}
+
+body,
+.wrapper,
+.main-panel,
+.content {
+  font-size: var(--text-body);
+}
+
+h1, .h1 { font-size: 1.75rem; line-height: 1.2; }
+h2, .h2 { font-size: 1.35rem; line-height: 1.25; }
+h3, .h3 { font-size: 1.15rem; line-height: 1.3; }
+h4, .h4,
+.card .card-title { font-size: var(--text-title); line-height: 1.35; }
+.card-category,
+.vmp-hint,
+.vmp-field-label,
+label,
+.bmd-label-floating { font-size: var(--text-sm); line-height: 1.4; }
+
+.form-control,
+.form-control:not([type="checkbox"]):not([type="radio"]),
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  min-height: var(--control-height);
+  font-size: var(--text-md);
+  line-height: 1.4;
+}
+input::placeholder,
+textarea::placeholder { padding-left: 0; }
+textarea { min-height: 84px; resize: vertical; }
+select.form-control { height: var(--control-height); }
+
+.btn {
+  min-height: var(--control-height-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  font-size: var(--text-md) !important;
+}
+.btn .material-icons,
+.btn .fa { font-size: 17px !important; }
+
+.table { font-size: var(--text-md); }
+.table thead th { font-size: var(--text-xs); }
+.table tbody td { padding-top: 10px; padding-bottom: 10px; }
+
+/* Vendor floating labels are absolutely positioned over the input. Give
+   them the same horizontal inset as the value text so placeholders and
+   labels never touch the box edge. */
+.bmd-form-group .bmd-label-floating {
+  left: 12px !important;
+  right: 12px;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.bmd-form-group.is-filled .bmd-label-floating,
+.bmd-form-group.is-focused .bmd-label-floating {
+  left: 12px !important;
+}
+
+/* ---------- rounded desktop operations rail ---------- */
+@media (min-width: 992px) {
+  .sidebar {
+    top: 12px !important;
+    bottom: 12px !important;
+    left: 12px !important;
+    width: 236px !important;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .sidebar .sidebar-wrapper {
+    width: 236px;
+    height: calc(100vh - 101px);
+  }
+  .sidebar .logo { min-height: 76px; }
+  .vmp-default-cred-alert { margin-left: 260px; }
+}
+
+/* Auth pages should fit the viewport instead of stacking a 70vh panel
+   below the fixed header and footer. */
+.vmp-auth-page {
+  margin-top: 0 !important;
+  min-height: 0 !important;
+  padding-top: 86px !important;
+  padding-bottom: 22px !important;
+}
+.vmp-auth-page .vmp-auth-wrap {
+  min-height: 0 !important;
+  height: auto !important;
+  align-items: flex-start;
+  align-self: flex-start;
+  padding-top: 34px;
+}
+.vmp-auth-page .vmp-auth-card { margin-top: 0; }
+
+
+@media (max-width: 991px) {
+  :root { --control-height: 44px; }
+  .vmp-auth-page { padding-top: 78px !important; }
+  .vmp-auth-page .vmp-auth-wrap { padding-top: 18px; }
+  .table thead th { font-size: 10px; }
+}
+
+/* ---------- overflow containment ---------- */
+.wrapper {
+  height: auto !important;
+  min-height: 100vh;
+}
+.main-panel > .content {
+  margin-top: 0 !important;
+  min-height: 0 !important;
+  padding-top: 86px !important;
+  padding-bottom: 24px !important;
+}
+.main-panel > .footer { min-height: 0; }
+
+@media (min-width: 992px) {
+  .sidebar {
+    top: 12px !important;
+    bottom: 12px !important;
+    height: calc(100vh - 24px) !important;
+    max-height: calc(100vh - 24px) !important;
+  }
+  .sidebar .sidebar-wrapper {
+    height: calc(100vh - 101px) !important;
+    max-height: calc(100vh - 101px) !important;
+  }
+}
+
+/* The tab strip is horizontally scrollable on small screens, but it must
+   never paint a vertical scrollbar inside the card header. */
+.card-header .nav-tabs {
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+
+/* ============================================================
+   MOBILE FIELD PASS
+   Keeps the same visual system while giving touch layouts their
+   own density, topbar, drawer, and overflow rules.
+   ============================================================ */
+@media (max-width: 991px) {
+  :root {
+    --control-height: 44px;
+    --control-height-sm: 40px;
+    --text-body: 14px;
+    --text-md: 14px;
+  }
+
+  html, body { overflow-x: hidden; }
+  body { min-height: 100dvh; }
+  .wrapper { min-height: 100dvh; height: auto !important; }
+  .main-panel { width: 100% !important; float: none !important; overflow-x: hidden; }
+  .main-panel > .content {
+    min-height: 0 !important;
+    margin-top: 0 !important;
+    padding: 78px 0 20px !important;
+  }
+  .main-panel > .content > .container-fluid {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  /* One-line topbar: brand truncates, actions never wrap. */
+  .navbar.navbar-transparent { padding-top: 10px !important; }
+  .navbar .container-fluid {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: 6px;
+    min-height: 48px;
+    margin: 0 8px;
+    padding: 7px 9px !important;
+  }
+  .navbar .navbar-wrapper {
+    display: flex !important;
+    align-items: center;
+    min-width: 0;
+    flex: 1 1 0%;
+    overflow: hidden;
+  }
+  .navbar .navbar-brand {
+    display: block;
+    min-width: 0;
+    max-width: 46vw !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px !important;
+  }
+  .navbar-toggler,
+  .navbar .navbar-collapse { display: none !important; }
+  #vmpNavToggle {
+    order: -1;
+    flex: 0 0 42px;
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: var(--r-sm);
+  }
+  .vmp-top-actions {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    margin-left: 0 !important;
+    gap: 2px;
+  }
+  .vmp-top-actions .nav-link { padding: 8px !important; }
+
+  /* Drawer is a rounded floating panel on small screens too. */
+  body.vmp-nav-open { overflow: hidden; }
+  body.vmp-nav-open .sidebar {
+    display: block !important;
+    position: fixed !important;
+    top: 78px !important;
+    bottom: 12px !important;
+    left: 10px !important;
+    width: min(292px, calc(100vw - 32px)) !important;
+    height: calc(100dvh - 90px) !important;
+    max-height: calc(100dvh - 90px) !important;
+    z-index: 1050 !important;
+    border: 1px solid var(--line-strong) !important;
+    border-radius: 16px !important;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  }
+  body.vmp-nav-open .sidebar .sidebar-wrapper {
+    width: 100% !important;
+    height: calc(100% - 76px) !important;
+    max-height: calc(100% - 76px) !important;
+  }
+  body.vmp-nav-open #vmpNavScrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(0, 0, 0, 0.62);
+  }
+
+  /* Touch-friendly cards and controls. */
+  .card { border-radius: 14px !important; }
+  .card .card-header { padding: 15px 16px 12px !important; }
+  .card .card-body { padding: 16px !important; }
+  .card .card-footer { padding: 14px 16px !important; }
+  .vmp-stat-icon { width: 44px; height: 44px; }
+  .vmp-stat-num { font-size: 24px; }
+  .btn { min-height: 40px; padding: 9px 14px !important; }
+  .form-control,
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea { min-height: 44px; font-size: 14px; }
+  .bmd-form-group .bmd-label-floating { left: 12px !important; }
+  .vmp-field-label { margin-top: 16px; }
+  .vmp-auth-page { padding: 78px 16px 20px !important; }
+  .vmp-auth-page .vmp-auth-wrap { padding-top: 12px; }
+  .vmp-auth-hero { padding: 24px 20px !important; }
+  .vmp-auth-hero h2 { font-size: 1.8rem; }
+
+  /* Table panels stay touch-scrollable without painting scrollbars. */
+  .table-responsive,
+  .vmp-scroller {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-responsive::-webkit-scrollbar,
+  .vmp-scroller::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  .table-responsive table { min-width: 620px; }
+  .card-header .nav-tabs { overflow-y: hidden !important; }
+}
+
+/* ---------- notification layout repair ----------
+   Bootstrap Notify absolutely positions its icon by default
+   (material-dashboard: .alert.alert-with-icon i[data-notify="icon"]),
+   which drops it on top of the text. The toast is rebuilt as a two column
+   grid: icon | text column, with the close button pulled out of flow. */
+div[data-notify="container"],
+.alert[data-notify="container"] {
+  position: fixed !important;
+  top: 84px !important;
+  right: 16px !important;
+  left: auto !important;
+  width: min(380px, calc(100vw - 32px)) !important;
+  min-width: 0 !important;
+  max-width: calc(100vw - 32px) !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) !important;
+  grid-auto-rows: min-content;
+  align-items: start !important;
+  align-content: start !important;
+  column-gap: 10px !important;
+  row-gap: 2px !important;
+  padding: 13px 44px 13px 14px !important;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: var(--r-sm) !important;
+  background: var(--surface-solid) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+  overflow: visible !important;
+}
+div[data-notify="container"] [data-notify="icon"],
+.alert[data-notify="container"] [data-notify="icon"] {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  float: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: start !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  margin: 0 !important;
+  font-size: 22px !important;
+  line-height: 24px !important;
+  color: var(--accent) !important;
+}
+div[data-notify="container"].alert-success [data-notify="icon"] { color: var(--respawn) !important; }
+div[data-notify="container"].alert-warning [data-notify="icon"] { color: var(--flash) !important; }
+div[data-notify="container"].alert-danger [data-notify="icon"] { color: var(--headshot) !important; }
+div[data-notify="container"] [data-notify="title"],
+div[data-notify="container"] [data-notify="message"] {
+  position: static !important;
+  float: none !important;
+  grid-column: 2 !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal !important;
+}
+div[data-notify="container"] [data-notify="title"] {
+  font-weight: 600 !important;
+}
+/* bootstrap-notify always renders the title span; collapse it when unused
+   so a message-only toast keeps a single compact line. */
+div[data-notify="container"] [data-notify="title"]:empty { display: none !important; }
+div[data-notify="container"] [data-notify="message"] { grid-row: 2 !important; }
+div[data-notify="container"] [data-notify="title"]:empty + [data-notify="message"] { grid-row: 1 !important; }
+div[data-notify="container"] [data-notify="dismiss"] {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+div[data-notify="container"] [data-notify="dismiss"] .material-icons { font-size: 18px; }
+div[data-notify="container"] [data-notify="progressbar"] { display: none !important; }
+
 @media (max-width: 540px) {
-  div[data-notify="container"], .alert[data-notify="container"] { min-width: 0 !important; max-width: calc(100vw - 16px) !important; }
+  div[data-notify="container"],
+  .alert[data-notify="container"] {
+    top: 78px !important;
+    right: 10px !important;
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+  }
 }

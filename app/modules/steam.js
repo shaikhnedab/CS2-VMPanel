@@ -20,6 +20,7 @@
 'use strict';
 const needle = require('needle');
 const logger = require('./logger')('Steam');
+const SteamIDConverter = require('../utils/steamIdConvertor');
 
 const STEAM_ID_RE = /^https?:\/\/(www\.)?steamcommunity\.com\/profiles\/(\d{17})\/?$/;
 const STEAM_ID_BARE_RE = /^\d{17}$/;
@@ -74,19 +75,30 @@ class Steam {
         }
         const input = profileURL.trim();
         let finalURL = null;
-        const idMatch = input.match(STEAM_ID_RE);
-        if (idMatch) {
-          finalURL = `https://steamcommunity.com/profiles/${idMatch[2]}?xml=1`;
-        } else if (STEAM_ID_BARE_RE.test(input)) {
-          finalURL = `https://steamcommunity.com/profiles/${input}?xml=1`;
-        } else if (STEAM_VANITY_URL_RE.test(input)) {
-          // Steam resolves custom URLs itself on the xml endpoint — no API key needed.
-          finalURL = `${input.replace(/\/$/, '')}?xml=1`;
-        } else if (STEAM_VANITY_RE.test(input)) {
-          const steamId = await this.resolveVanity(input);
-          finalURL = `https://steamcommunity.com/profiles/${steamId}?xml=1`;
-        } else {
-          throw { type: 'actor', desc: FRIENDLY_INVALID_URL };
+
+        // Accept every identifier form shown by the Steam/ID tools:
+        // SteamID, SteamID64, SteamID3, account ID, Steam/FiveM hex,
+        // and profile URLs. The shared converter owns the canonical math.
+        try {
+          const id64 = SteamIDConverter.toCanonical64(input);
+          finalURL = `https://steamcommunity.com/profiles/${id64}?xml=1`;
+        } catch (e) { /* not a raw identifier; try URL/vanity forms below */ }
+
+        if (!finalURL) {
+          const idMatch = input.match(STEAM_ID_RE);
+          if (idMatch) {
+            finalURL = `https://steamcommunity.com/profiles/${idMatch[2]}?xml=1`;
+          } else if (STEAM_ID_BARE_RE.test(input)) {
+            finalURL = `https://steamcommunity.com/profiles/${input}?xml=1`;
+          } else if (STEAM_VANITY_URL_RE.test(input)) {
+            // Steam resolves custom URLs itself on the xml endpoint — no API key needed.
+            finalURL = `${input.replace(/\/$/, '')}?xml=1`;
+          } else if (STEAM_VANITY_RE.test(input)) {
+            const steamId = await this.resolveVanity(input);
+            finalURL = `https://steamcommunity.com/profiles/${steamId}?xml=1`;
+          } else {
+            throw { type: 'actor', desc: FRIENDLY_INVALID_URL };
+          }
         }
         needle('get', finalURL, { open_timeout: 8000, read_timeout: 8000, follow_max: 2 })
           .then(res => {

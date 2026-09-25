@@ -108,7 +108,7 @@ exports.updatePanelSettings = async (req, res) => {
 }
 
 const ALLOWED_SETTINGS_KEYS = new Set([
-  'color_theme', 'dash_vip_show', 'dash_admin_show', 'webhook_url',
+  'dash_vip_show', 'dash_admin_show', 'webhook_url',
   'community_name', 'community_url', 'community_logo_url', 'community_info',
   'platform_currency', 'normiadmin_settings', 'hiddenadmin_login',
   'salenotification_discord',

@@ -1,159 +1,311 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-<title>Install — CS2-VMPanel</title>
-<style>
-:root{--bg:#0a0d14;--card:#131824;--border:#2a3140;--text:#e8ecf3;--muted:#9aa4b5;--accent:#7c5cff;--accent2:#00d4ff;--ok:#22c55e;--err:#ef4444}
-*{box-sizing:border-box}
-body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1b2340 0%,var(--bg) 55%) fixed,var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-.wrap{width:100%;max-width:760px}
-.hero{text-align:center;margin-bottom:20px}
-.hero h1{margin:0;font-size:30px;letter-spacing:.2px}
-.hero h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero p{color:var(--muted);margin:8px 0 0}
-.card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0)),var(--card);border:1px solid var(--border);border-radius:16px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-.card h2{margin:0 0 4px;font-size:17px}
-.card .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.field{display:flex;flex-direction:column;gap:6px}
-.field.full{grid-column:1/-1}
-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-input{background:#0d1220;border:1px solid var(--border);border-radius:10px;color:var(--text);padding:11px 12px;font-size:14px;width:100%}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,92,255,.25)}
-.err{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);color:#fecaca;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:14px}
-.okmsg{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.5);color:#bbf7d0;border-radius:10px;padding:10px 12px;margin-bottom:16px;font-size:14px;display:none}
-.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
-button{cursor:pointer;border-radius:10px;font-size:14px;font-weight:600;padding:12px 16px;border:1px solid transparent}
-.btn-primary{background:linear-gradient(90deg,var(--accent),#5b8cff);color:#fff;flex:1;min-width:200px}
-.btn-ghost{background:transparent;border-color:var(--border);color:var(--text)}
-.hint{color:var(--muted);font-size:12px;margin-top:14px}
-@media(max-width:640px){.grid{grid-template-columns:1fr}}
-</style>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
+  <meta name="theme-color" content="#0a1120" />
+  <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+  <title>Install — CS2-VMPanel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" type="text/css"
+    href="https://fonts.googleapis.com/css?family=Space+Grotesk:wght@400;500;600;700|IBM+Plex+Mono:wght@400;500;600|Material+Icons" />
+  <!-- Same design system as the panel itself: tokens + components, so the
+       installer cannot drift away from the rest of the UI. -->
+  <link href="/css/material-dashboard.css" rel="stylesheet" />
+  <link href="/css/nova-tokens.css?v=19" rel="stylesheet" />
+  <link href="/css/vmp-design-system.css?v=19" rel="stylesheet" />
+  <style>
+    /* Layout only — colors, type and controls come from the shared sheets. */
+    .inst-wrap {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    .inst-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 18px;
+    }
+
+    /* Material Dashboard puts its own margins on .form-group and
+       .vmp-field-label, which stacks up with the grid gap. The grid owns the
+       rhythm here, so zero them out. */
+    .inst-grid .form-group {
+      margin: 0 !important;
+      padding: 0;
+    }
+
+    .inst-grid .vmp-field-label {
+      margin: 0 0 6px !important;
+      display: block;
+    }
+
+    .inst-grid .form-control {
+      margin: 0 !important;
+    }
+
+    .inst-grid .full {
+      grid-column: 1 / -1;
+    }
+
+    .inst-section {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 -2px;
+      color: var(--muted);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .inst-section::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .inst-note {
+      display: none;
+      align-items: flex-start;
+      gap: 9px;
+      margin-bottom: 18px;
+      padding: 12px 14px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--line-strong);
+      background: var(--inset);
+      font-size: var(--text-md);
+    }
+
+    .inst-note.show {
+      display: flex;
+    }
+
+    .inst-note .material-icons {
+      font-size: 18px;
+      flex: 0 0 auto;
+    }
+
+    .inst-note.ok {
+      border-color: var(--respawn);
+      color: var(--respawn);
+    }
+
+    .inst-note.bad {
+      border-color: var(--headshot);
+      color: var(--headshot);
+    }
+
+    .inst-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+
+    .inst-actions .btn {
+      flex: 1 1 200px;
+    }
+
+    @media (max-width: 640px) {
+      .inst-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .inst-actions {
+        flex-direction: column;
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="wrap">
-  <div class="hero">
-    <h1>Welcome to <span>CS2-VMPanel</span></h1>
-    <p>First-boot setup — connect your database and create the admin account.</p>
-  </div>
-  <div class="card">
-    <h2>Database &amp; admin setup</h2>
-    <p class="sub">This writes the panel configuration file. Nothing is committed or logged.</p>
-    <% if (typeof error !== 'undefined' && error) { %>
-      <div class="err" role="alert"><%= error %></div>
-    <% } %>
-    <div class="okmsg" id="connOk" role="status"></div>
-    <form method="post" action="/install" id="installForm" autocomplete="off">
-      <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-      <div class="grid">
-        <div class="field">
-          <label for="db_host">DB host</label>
-          <input id="db_host" name="db_host" required value="<%= (typeof values !== 'undefined' && values.db_host) || '' %>" placeholder="localhost">
-        </div>
-        <div class="field">
-          <label for="db_port">DB port</label>
-          <input id="db_port" name="db_port" required inputmode="numeric" value="<%= (typeof values !== 'undefined' && values.db_port) || '3306' %>" placeholder="3306">
-        </div>
-        <div class="field">
-          <label for="db_user">DB user</label>
-          <input id="db_user" name="db_user" required value="<%= (typeof values !== 'undefined' && values.db_user) || '' %>" placeholder="vmpanel" autocomplete="username">
-        </div>
-        <div class="field">
-          <label for="db_password">DB password</label>
-          <input id="db_password" name="db_password" type="password" value="" placeholder="••••••••" autocomplete="new-password">
-        </div>
-        <div class="field full">
-          <label for="db_name">DB name</label>
-          <input id="db_name" name="db_name" required value="<%= (typeof values !== 'undefined' && values.db_name) || '' %>" placeholder="vmpanel">
-        </div>
-        <div class="field">
-          <label for="admin_username">Admin username</label>
-          <input id="admin_username" name="admin_username" required minlength="3" maxlength="32" value="<%= (typeof values !== 'undefined' && values.admin_username) || '' %>" placeholder="admin" autocomplete="username">
-        </div>
-        <div class="field">
-          <label for="steam_api_key">Steam API key (optional)</label>
-          <input id="steam_api_key" name="steam_api_key" value="<%= (typeof values !== 'undefined' && values.steam_api_key) || '' %>" placeholder="Leave empty to disable Steam login" autocomplete="off">
-        </div>
-        <div class="field full">
-          <label for="public_base_url">Public address (optional)</label>
-          <input id="public_base_url" name="public_base_url" value="<%= (typeof values !== 'undefined' && values.public_base_url) || '' %>" placeholder="https://vip.example.com — Steam login callbacks; empty = auto-detect" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="admin_password">Admin password (min 8 chars)</label>
-          <input id="admin_password" name="admin_password" type="password" required minlength="8" placeholder="••••••••" autocomplete="new-password">
-        </div>
-        <div class="field">
-          <label for="admin_password_confirm">Confirm password</label>
-          <input id="admin_password_confirm" name="admin_password_confirm" type="password" required minlength="8" placeholder="••••••••" autocomplete="new-password">
+  <div class="content vmp-auth-page">
+    <div class="container-fluid">
+      <div class="vmp-auth-wrap">
+        <div class="row justify-content-center w-100">
+          <div class="col-md-12">
+            <div class="card inst-wrap">
+              <div class="card-body" style="padding:28px">
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+                  <div class="vmp-stat-icon"><i class="material-icons">rocket_launch</i></div>
+                  <div>
+                    <h4 class="card-title" style="margin:0">Welcome to CS2-VMPanel</h4>
+                    <p class="card-category" style="margin:2px 0 0">First-boot setup — connect the database
+                      and create the admin account.</p>
+                  </div>
+                </div>
+                <% if (typeof error !== 'undefined' && error) { %>
+                  <div class="inst-note bad show" role="alert">
+                    <i class="material-icons" aria-hidden="true">error</i>
+                    <span><%= error %></span>
+                  </div>
+                <% } %>
+                <div class="inst-note" id="connOk" role="status" aria-live="polite">
+                  <i class="material-icons" aria-hidden="true">check_circle</i>
+                  <span></span>
+                </div>
+                <form method="post" action="/install" id="installForm" autocomplete="off" novalidate>
+                  <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+                  <div class="inst-grid">
+                    <div class="inst-section">Database</div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="db_host">DB host</label>
+                      <input id="db_host" name="db_host" class="form-control" required
+                        value="<%= (typeof values !== 'undefined' && values.db_host) || '' %>" placeholder="localhost"
+                        autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="db_port">DB port</label>
+                      <input id="db_port" name="db_port" class="form-control" required inputmode="numeric"
+                        value="<%= (typeof values !== 'undefined' && values.db_port) || '3306' %>" placeholder="3306"
+                        autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="db_user">DB user</label>
+                      <input id="db_user" name="db_user" class="form-control" required
+                        value="<%= (typeof values !== 'undefined' && values.db_user) || '' %>" placeholder="vmpanel"
+                        autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="db_password">DB password</label>
+                      <input id="db_password" name="db_password" class="form-control" type="password" value=""
+                        placeholder="••••••••" autocomplete="new-password">
+                    </div>
+                    <div class="form-group full">
+                      <label class="vmp-field-label" for="db_name">DB name</label>
+                      <input id="db_name" name="db_name" class="form-control" required
+                        value="<%= (typeof values !== 'undefined' && values.db_name) || '' %>" placeholder="vmpanel"
+                        autocomplete="off" spellcheck="false">
+                    </div>
+
+                    <div class="inst-section">Admin account</div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="admin_username">Username</label>
+                      <input id="admin_username" name="admin_username" class="form-control" required minlength="3"
+                        maxlength="32" value="<%= (typeof values !== 'undefined' && values.admin_username) || '' %>"
+                        placeholder="admin" autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="admin_password">Password (min 8)</label>
+                      <input id="admin_password" name="admin_password" class="form-control" type="password" required
+                        minlength="8" placeholder="••••••••" autocomplete="new-password">
+                    </div>
+                    <div class="form-group full">
+                      <label class="vmp-field-label" for="admin_password_confirm">Confirm password</label>
+                      <input id="admin_password_confirm" name="admin_password_confirm" class="form-control"
+                        type="password" required minlength="8" placeholder="••••••••" autocomplete="new-password">
+                    </div>
+
+                    <div class="inst-section">Optional</div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="steam_api_key">Steam API key</label>
+                      <input id="steam_api_key" name="steam_api_key" class="form-control"
+                        value="<%= (typeof values !== 'undefined' && values.steam_api_key) || '' %>"
+                        placeholder="Empty = Steam login off" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                      <label class="vmp-field-label" for="public_base_url">Public address</label>
+                      <input id="public_base_url" name="public_base_url" class="form-control"
+                        value="<%= (typeof values !== 'undefined' && values.public_base_url) || '' %>"
+                        placeholder="Empty = auto-detect" autocomplete="off" spellcheck="false">
+                    </div>
+                  </div>
+                  <div class="inst-actions">
+                    <button type="button" class="btn btn-default" id="testBtn">
+                      <i class="material-icons" aria-hidden="true">wifi_tethering</i> Test connection
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="installBtn">
+                      <i class="material-icons" aria-hidden="true">check</i> Install &amp; continue
+                    </button>
+                  </div>
+                  <p class="vmp-hint">You will be sent to the login page when the install finishes. The wizard
+                    writes <code>config.json</code> (mode <code>0600</code>) and nothing else — a legacy
+                    <code>.env</code> is still read if you have one, and takes precedence.</p>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="actions">
-        <button type="button" class="btn-ghost" id="testBtn">Test connection</button>
-        <button type="submit" class="btn-primary" id="installBtn">Install &amp; continue</button>
-      </div>
-          <p class="hint">After install you will be redirected to the login page. Database credentials are stored only in the server <code>config.json</code> file.</p>
-    </form>
+    </div>
   </div>
-</div>
-<script>
-(function () {
-  var form = document.getElementById('installForm');
-  var testBtn = document.getElementById('testBtn');
-  var installBtn = document.getElementById('installBtn');
-  var okBox = document.getElementById('connOk');
-  var lastTest = 0;
-  function csrf() {
-    var m = document.querySelector('meta[name="csrf-token"]');
-    return m ? m.getAttribute('content') : '';
-  }
-  function collect() {
-    return {
-      db_host: document.getElementById('db_host').value,
-      db_port: document.getElementById('db_port').value,
-      db_user: document.getElementById('db_user').value,
-      db_password: document.getElementById('db_password').value,
-      db_name: document.getElementById('db_name').value,
-      _csrf: csrf()
-    };
-  }
-  testBtn.addEventListener('click', function () {
-    var now = Date.now();
-    if (now - lastTest < 3000) return; // ignore accidental double-clicks; the server rate-limits probes
-    lastTest = now;
-    okBox.style.display = 'none';
-    testBtn.disabled = true;
-    testBtn.textContent = 'Testing…';
-    fetch('/install/test-connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-      body: JSON.stringify(collect())
-    }).then(function (r) { return r.json().then(function (b) { return { s: r.ok, b: b }; }); })
-      .then(function (r) {
-        okBox.style.display = 'block';
-        if (r.s && r.b && r.b.success) {
-          okBox.className = 'okmsg';
-          okBox.textContent = 'Connection successful.';
-        } else {
-          okBox.className = 'err';
-          okBox.textContent = (r.b && r.b.data && r.b.data.message) || 'Could not connect to the database.';
-        }
-      }).catch(function () {
-        okBox.style.display = 'block';
-        okBox.className = 'err';
-        okBox.textContent = 'Could not connect to the database.';
-      }).finally(function () {
-        testBtn.disabled = false;
-        testBtn.textContent = 'Test connection';
+
+  <script>
+    (function () {
+      var form = document.getElementById('installForm');
+      var testBtn = document.getElementById('testBtn');
+      var installBtn = document.getElementById('installBtn');
+      var okBox = document.getElementById('connOk');
+      var okText = okBox ? okBox.querySelector('span') : null;
+      var okIcon = okBox ? okBox.querySelector('.material-icons') : null;
+      var lastTest = 0;
+
+      function csrf() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') : '';
+      }
+
+      function note(kind, text) {
+        if (!okBox) return;
+        okBox.className = 'inst-note show ' + kind;
+        if (okIcon) okIcon.textContent = kind === 'ok' ? 'check_circle' : 'error';
+        if (okText) okText.textContent = text;
+      }
+
+      function collect() {
+        return {
+          db_host: document.getElementById('db_host').value,
+          db_port: document.getElementById('db_port').value,
+          db_user: document.getElementById('db_user').value,
+          db_password: document.getElementById('db_password').value,
+          db_name: document.getElementById('db_name').value,
+          _csrf: csrf()
+        };
+      }
+
+      testBtn.addEventListener('click', function () {
+        var now = Date.now();
+        // Ignore accidental double-clicks; the server rate-limits probes anyway.
+        if (now - lastTest < 3000) return;
+        lastTest = now;
+        if (okBox) okBox.className = 'inst-note';
+        testBtn.disabled = true;
+        testBtn.textContent = 'Testing…';
+        fetch('/install/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify(collect())
+        })
+          .then(function (r) { return r.json().then(function (b) { return { s: r.ok, b: b }; }); })
+          .then(function (r) {
+            if (r.s && r.b && r.b.success) {
+              note('ok', 'Connection successful.');
+            } else {
+              note('bad', (r.b && r.b.data && r.b.data.message) || 'Could not connect to the database.');
+            }
+          })
+          .catch(function () { note('bad', 'Could not connect to the database.'); })
+          .finally(function () {
+            testBtn.disabled = false;
+            testBtn.textContent = 'Test connection';
+          });
       });
-  });
-  form.addEventListener('submit', function () {
-    installBtn.disabled = true;
-    installBtn.textContent = 'Installing…';
-  });
-})();
-</script>
+
+      form.addEventListener('submit', function () {
+        // Let the browser's own validation run first: with novalidate off we
+        // let required/minlength stand, but never block a valid submit.
+        installBtn.disabled = true;
+        installBtn.textContent = 'Installing…';
+      });
+    })();
+  </script>
 </body>
+
 </html>

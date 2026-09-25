@@ -1,133 +1,194 @@
 /* ============================================================
-   NOVA TOKENS — CS server-ops console identity
-   Display: Space Grotesk · Body: Inter · Data: JetBrains Mono
+   VMP FIELD INSTRUMENT TOKENS
+   Shared visual language with the HVAC Design Suite:
+   blueprint navy surfaces, copper controls, cyan operational
+   signals, Space Grotesk UI, and IBM Plex Mono data.
    ============================================================ */
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 :root {
   color-scheme: dark;
-  --ink: #060a15;
-  --ops: #0c1322;
-  --surface: rgba(19, 26, 43, 0.78);
-  --surface-solid: #131a2b;
-  --surface-2: rgba(32, 41, 63, 0.55);
-  --line: rgba(148, 163, 184, 0.14);
-  --line-strong: rgba(148, 163, 184, 0.3);
-  --text: #edf1fa;
-  --muted: #8d99b4;
-  --net: #7c5cff;
-  --ice: #00e0c6;
-  --respawn: #22e584;
-  --flash: #ffb020;
-  --headshot: #ff5d5d;
-  --info: #4cc3ff;
-  --grad: linear-gradient(135deg, #7c5cff 0%, #00e0c6 100%);
-  --r-lg: 18px;
-  --r-md: 12px;
-  --r-sm: 9px;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-  --glow: 0 0 24px rgba(124, 92, 255, 0.35);
-  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
-  --font-body: "Inter", "Roboto", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
-  --t-fast: 160ms;
-  --t: 240ms;
+
+  /* surfaces */
+  --ink: #0a1120;
+  --ops: #0d1524;
+  --panel: #101a2c;
+  --panel-2: #0c1626;
+  --inset: #0a1424;
+  --surface: #101a2c;
+  --surface-solid: #101a2c;
+  --surface-2: #0c1626;
+  --line: #1e2c44;
+  --line-soft: rgba(96, 150, 214, 0.07);
+  --grid-line: rgba(96, 150, 214, 0.07);
+
+  /* text */
+  --text: #eaf0f8;
+  --paper: #eaf0f8;
+  --muted: #8b98b0;
+  --muted-2: #5c6a84;
+
+  /* default primary theme: copper / cyan */
+  --accent: #d38a4d;
+  --accent-strong: #e6a165;
+  --accent-ink: #2a1305;
+  --accent-wash: rgba(211, 138, 77, 0.12);
+  --net: var(--accent);
+  --ice: #4fd2c6;
+  --ice-wash: rgba(79, 210, 198, 0.1);
+  --respawn: #3ed399;
+  --flash: #eab35a;
+  --headshot: #ef5f5f;
+  --info: #4fd2c6;
+
+  /* retain legacy variable names for existing markup */
+  --grad: var(--accent);
+  --vmp-grad: var(--accent);
+  --vmp-muted: var(--muted);
+  --glow: 0 0 0 rgba(0, 0, 0, 0);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+
+  /* geometry */
+  --r-lg: 16px;
+  --r-md: 10px;
+  --r-sm: 6px;
+  --container: 1440px;
+
+  /* type */
+  --font-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --t-fast: 140ms;
+  --t: 200ms;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 body.vmp-light {
   color-scheme: light;
-  --ink: #e9edf6;
-  --ops: #dde4f1;
-  --surface: rgba(255, 255, 255, 0.86);
+  --ink: #eef1f6;
+  --ops: #e7ebf2;
+  --panel: #ffffff;
+  --panel-2: #f4f6fa;
+  --inset: #eef1f7;
+  --surface: #ffffff;
   --surface-solid: #ffffff;
-  --surface-2: rgba(238, 242, 250, 0.95);
-  --line: rgba(15, 23, 42, 0.1);
-  --line-strong: rgba(15, 23, 42, 0.24);
-  --text: #0d1526;
-  --muted: #576784;
-  --shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
-  --glow: 0 0 22px rgba(124, 92, 255, 0.25);
+  --surface-2: #f4f6fa;
+  --line: #d7dee9;
+  --line-soft: rgba(51, 90, 148, 0.08);
+  --grid-line: rgba(51, 90, 148, 0.06);
+  --text: #121a29;
+  --paper: #121a29;
+  --muted: #55627a;
+  --muted-2: #7a869c;
+  --accent-wash: rgba(211, 138, 77, 0.14);
+  --ice-wash: rgba(79, 210, 198, 0.12);
+  --shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
 }
 
-/* ---------- panel themes (Panel Theme setting drives [data-theme]) ---------- */
-body[data-theme="danger"] { --net: #ff5d6d; --ice: #ff2e88; --grad: linear-gradient(135deg, #ff5d6d 0%, #ff2e88 100%); --glow: 0 0 24px rgba(255, 93, 109, 0.35); }
-body[data-theme="primary"] { --net: #9d4edd; --ice: #00e0c6; --grad: linear-gradient(135deg, #9d4edd 0%, #00e0c6 100%); --glow: 0 0 24px rgba(157, 78, 221, 0.35); }
-body[data-theme="warning"] { --net: #ff9a3d; --ice: #ffc53d; --grad: linear-gradient(135deg, #ff9a3d 0%, #ffc53d 100%); --glow: 0 0 24px rgba(255, 154, 61, 0.35); }
-body[data-theme="success"] { --net: #22e584; --ice: #00b8a9; --grad: linear-gradient(135deg, #22e584 0%, #00b8a9 100%); --glow: 0 0 24px rgba(34, 229, 132, 0.35); }
-body[data-theme="info"] { --net: #4cc3ff; --ice: #2f80ed; --grad: linear-gradient(135deg, #4cc3ff 0%, #2f80ed 100%); --glow: 0 0 24px rgba(76, 195, 255, 0.35); }
-html { -webkit-tap-highlight-color: rgba(124, 92, 255, 0.25); }
+/* Panel theme values are preserved for settings and permissions. */
+body[data-theme="danger"] { --accent: #ef5f5f; --accent-strong: #ff8080; --accent-ink: #2b0b0b; --accent-wash: rgba(239, 95, 95, 0.12); --net: #ef5f5f; }
+body[data-theme="primary"] { --accent: #d38a4d; --accent-strong: #e6a165; --accent-ink: #2a1305; --accent-wash: rgba(211, 138, 77, 0.12); --net: #d38a4d; }
+body[data-theme="warning"] { --accent: #eab35a; --accent-strong: #f4c777; --accent-ink: #2b1c05; --accent-wash: rgba(234, 179, 90, 0.12); --net: #eab35a; }
+body[data-theme="success"] { --accent: #3ed399; --accent-strong: #67e1b4; --accent-ink: #062419; --accent-wash: rgba(62, 211, 153, 0.12); --net: #3ed399; }
+body[data-theme="info"] { --accent: #4fd2c6; --accent-strong: #78e4db; --accent-ink: #062521; --accent-wash: rgba(79, 210, 198, 0.12); --net: #4fd2c6; }
+
+html {
+  -webkit-tap-highlight-color: var(--accent-wash);
+  overflow-y: scroll;
+}
+
 body {
   font-family: var(--font-body);
-  background: var(--ink);
+  font-weight: 400;
+  background-color: var(--ink);
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
   color: var(--text);
   overflow-x: hidden;
   touch-action: manipulation;
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+body.dark-edition,
+body.vmp-light.dark-edition {
+  background-color: var(--ink) !important;
+  font-weight: 400 !important;
+}
+
+.dark-edition .main-panel,
+.dark-edition .content { font-weight: 400 !important; }
+
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(700px 420px at 8% -60px, rgba(124, 92, 255, 0.22), transparent 65%),
-    radial-gradient(700px 460px at 95% 10%, rgba(0, 224, 198, 0.13), transparent 65%),
-    radial-gradient(900px 600px at 50% 115%, rgba(255, 92, 168, 0.09), transparent 65%);
+  background: linear-gradient(180deg, rgba(10, 17, 32, 0.12), transparent 30%, rgba(10, 17, 32, 0.18));
 }
+
 body.vmp-light::before {
-  background:
-    radial-gradient(700px 420px at 8% -60px, rgba(124, 92, 255, 0.13), transparent 65%),
-    radial-gradient(700px 460px at 95% 10%, rgba(0, 224, 198, 0.11), transparent 65%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 30%, rgba(255, 255, 255, 0.2));
 }
+
 .wrapper, .main-panel, .content { position: relative; }
-/* NOTE: no z-index here on purpose. A z-index on .wrapper/.main-panel
-   traps Bootstrap's body-level .modal-backdrop ABOVE #userConfirmationModal
-   (and the mobile drawer under its scrim), making both unclickable.
-   Content still paints above body::before by DOM order. */
 .main-panel, .content { background: transparent !important; }
 
-h1, h2, h3, .card-title, .navbar-brand, .sidebar .logo .simple-text {
+h1, h2, h3, h4, h5,
+.card-title, .navbar-brand, .sidebar .logo .simple-text {
   font-family: var(--font-display);
   text-wrap: balance;
 }
-::selection { background: rgba(124, 92, 255, 0.45); color: #fff; }
-:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
 
-/* ---------- utilities ---------- */
+p { line-height: 1.55; }
+::selection { background: var(--accent-wash); color: var(--text); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 .eyebrow {
   font-family: var(--font-display);
-  font-size: 11px; font-weight: 700;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
+
 .mono { font-family: var(--font-mono); }
 .tnum { font-variant-numeric: tabular-nums; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .skip-link {
-  position: fixed; top: -60px; left: 12px; z-index: 2000;
-  background: var(--net); color: #fff; padding: 10px 18px; border-radius: 10px;
-  font-weight: 700; transition: top var(--t-fast) var(--ease);
+  position: fixed;
+  top: -60px;
+  left: 12px;
+  z-index: 2000;
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 10px 18px;
+  border-radius: var(--r-sm);
+  font-weight: 700;
+  transition: top var(--t-fast) var(--ease);
 }
 .skip-link:focus { top: 12px; }
-code { font-family: var(--font-mono); background: var(--surface-2); padding: 2px 7px; border-radius: 7px; }
+code { font-family: var(--font-mono); background: var(--surface-2); padding: 2px 7px; border-radius: var(--r-sm); }
 body.vmp-light code { background: #e8edf6; }
 a { transition: color var(--t-fast) var(--ease); }
 hr { border-color: var(--line); }
 img { max-width: 100%; }
 
-/* ---------- light mode: beat legacy .dark-edition specificity ---------- */
 body.vmp-light.dark-edition { background-color: var(--ink); }
-body.vmp-light.dark-edition .card { color: #0d1526; }
-body.vmp-light.dark-edition .card .card-body { color: #0d1526; }
+body.vmp-light.dark-edition .card { color: var(--text); }
+body.vmp-light.dark-edition .card .card-body { color: var(--text); }
 body.vmp-light.dark-edition .card .card-body .card-category,
-body.vmp-light.dark-edition .card .card-header .card-category { color: #576784; }
+body.vmp-light.dark-edition .card .card-header .card-category { color: var(--muted) !important; }
 body.vmp-light.dark-edition .card .card-title,
 body.vmp-light.dark-edition .card .card-body .card-title,
-body.vmp-light.dark-edition .card .card-body .card-category + .card-title { color: #0d1526; }
-body.vmp-light.dark-edition .card .vmp-stat-num { color: #0d1526; }
-body.vmp-light.dark-edition .card a:not(.btn):not(.nav-link):not(.dropdown-item):not(.vmp-badge) { color: #6d28d9; }
+body.vmp-light.dark-edition .card .card-body .card-category + .card-title { color: var(--text); }
+body.vmp-light.dark-edition .card .vmp-stat-num { color: var(--text); }
+body.vmp-light.dark-edition .card a:not(.btn):not(.nav-link):not(.dropdown-item):not(.vmp-badge) { color: var(--accent-strong); }
 body.vmp-light.dark-edition .card .card-footer .stats,
-body.vmp-light.dark-edition .card .card-body .card-description { color: #576784; }
-body.vmp-light.dark-edition .navbar .navbar-brand { color: #0d1526; }
+body.vmp-light.dark-edition .card .card-body .card-description { color: var(--muted); }
+body.vmp-light.dark-edition .navbar .navbar-brand { color: var(--text) !important; }

@@ -64,6 +64,12 @@ function normalizeInput(input) {
     const sid = canon(SteamIDConverter.fromSteamID3(raw));
     return { kind: 'id', steamId: sid, profileUrl: `https://steamcommunity.com/profiles/${SteamIDConverter.toSteamID64(sid)}` };
   }
+  // Account IDs and Steam/FiveM hex forms are also valid gift inputs.
+  // Resolve them to the same canonical 64-bit ID used by the admin fetcher.
+  if (/^(?:STEAM:(?:0:)?|0x)[0-9a-f]{1,17}$/i.test(raw) || /^[0-9]{1,10}$/.test(raw)) {
+    const steamId64 = SteamIDConverter.toCanonical64(raw);
+    return { kind: 'id64', steamId64, profileUrl: `https://steamcommunity.com/profiles/${steamId64}` };
+  }
   const m = raw.match(PROFILE_URL_RE);
   if (m) return { kind: 'url', profileUrl: `https://steamcommunity.com/${raw.match(VANITY_RE) ? `id/${raw.match(VANITY_RE)[2]}` : `profiles/${raw.match(/profiles\/(\d{17})/i)[1]}`}` };
   throw new Error('That does not look like a valid Steam profile link or Steam ID.');

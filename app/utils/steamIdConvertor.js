@@ -143,7 +143,28 @@ var SteamIDConverter = {
     const canon = s.replace(/^STEAM_0:/, 'STEAM_1:');
     if (this.isSteamID(canon)) return this.toSteamID64(canon);
     if (this.isSteamID3(s)) return this.toSteamID64(this.fromSteamID3(s));
-    throw new TypeError('That does not look like a Steam ID. Use STEAM_1:0:123456, [U:1:123456], or 7656119…');
+
+    // Account ID form: the low 32-bit account number used by SteamID3,
+    // e.g. 131758038.
+    if (/^[0-9]{1,10}$/.test(s)) {
+      const account = BigInt(s);
+      if (account <= 4294967295n) return (account + 76561197960265728n).toString();
+    }
+
+    // Steam/FiveM hex form: STEAM:110000107DA77D6, 0x110000107DA77D6,
+    // or the account portion as STEAM:0:7DA77D6. A full 64-bit hex value
+    // wins when it is in the valid SteamID64 range; otherwise treat it as
+    // an account ID in hex.
+    const hexMatch = s.match(/^(?:STEAM:(?:0:)?|0x)([0-9a-f]{1,17})$/i);
+    if (hexMatch) {
+      const hexValue = BigInt(`0x${hexMatch[1]}`);
+      if (hexValue >= 76561197960265729n && hexValue <= 99999999999999999n) {
+        return hexValue.toString();
+      }
+      if (hexValue <= 4294967295n) return (hexValue + 76561197960265728n).toString();
+    }
+
+    throw new TypeError('That does not look like a Steam ID. Use a profile link, SteamID64, STEAM_1:0:123456, [U:1:123456], an account ID, or STEAM:110000107DA77D6.');
   },
 
   /**
