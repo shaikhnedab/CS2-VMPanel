@@ -88,6 +88,10 @@ config.payment_gateways = {
     environment: process.env.PAYU_ENV || (pg.payU && pg.payU.environment) || 'test',
     merchantKey: process.env.PAYU_MERCHANT_KEY || (pg.payU && pg.payU.merchantKey) || '',
     merchantSalt: process.env.PAYU_MERCHANT_SALT || (pg.payU && pg.payU.merchantSalt) || '',
+    // The reverse-hash check always runs. This only controls the extra
+    // verify_payment API call, which some accounts cannot use and which can be
+    // rate limited - see docs.payu.in/reference/verify_payment_api.
+    verifyApi: envBool(process.env.PAYU_VERIFY_API, !(pg.payU && pg.payU.verifyApi === false)),
   },
   razorPay: {
     enabled: envBool(process.env.RAZORPAY_ENABLED, pg.razorPay && (pg.razorPay.enabled === true || pg.razorPay.enabled === 'true')),
@@ -197,6 +201,7 @@ function applyEnv(cfg) {
       environment: process.env.PAYU_ENV || (pg.payU && pg.payU.environment) || 'test',
       merchantKey: process.env.PAYU_MERCHANT_KEY || (pg.payU && pg.payU.merchantKey) || '',
       merchantSalt: process.env.PAYU_MERCHANT_SALT || (pg.payU && pg.payU.merchantSalt) || '',
+      verifyApi: envBool(process.env.PAYU_VERIFY_API, !(pg.payU && pg.payU.verifyApi === false)),
     },
     razorPay: {
       enabled: envBool(process.env.RAZORPAY_ENABLED, pg.razorPay && (pg.razorPay.enabled === true || pg.razorPay.enabled === 'true')),

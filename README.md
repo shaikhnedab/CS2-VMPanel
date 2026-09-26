@@ -194,6 +194,15 @@ sales record stores the gateway's verified order id, amount and currency — nev
 It is for local debugging only and is logged as a warning on every purchase — leave it on in
 production.
 
+**PayU accounts without API access.** PayU's `verify_payment` API can be unavailable (no API access
+on the account) or rate limited — the sandbox shared key starts returning HTTP 429 within a handful
+of calls. The PayU reverse hash is already cryptographic proof that the response came from PayU,
+because it needs the merchant salt, which never leaves the server; the amount binding plus the
+per-gateway duplicate check cover replay. If your account cannot use the API, set
+`PAYU_VERIFY_API=false` (or `"payU": { "verifyApi": false }` in `config.json`) to require the reverse
+hash alone. Every payment taken that way is logged as a warning. Do **not** set this for PayU unless
+you have confirmed the API is unusable for your account.
+
 | Symptom | Check |
 |---|---|
 | Button missing | Gateway enabled? **All** its secrets present (PayU key+salt, Razorpay id+secret, PayPal id+secret)? Row currency `INR` for PayU? Container recreated after the edit? |
@@ -218,6 +227,7 @@ Every value can live in `config.json`; the matching environment variable always 
 | `PAYPAL_CLIENT_ID` `PAYPAL_CLIENT_SECRET` `PAYPAL_ENV` | for PayPal | PayPal REST credentials. **The secret is required** — without it payments cannot be verified and PayPal is hidden |
 | `VERIFY_PAYMENTS` | no | `false` disables server-side payment verification (debugging only — anyone can then forge a payment) |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
+| `PAYU_VERIFY_API` | no | `false` requires only PayU's reverse hash, skipping the `verify_payment` API (accounts without API access, or rate limiting) |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |
 | `SCHEDULE_DELETE_HOURS` `SCHEDULE_NOTIF_HOURS` | no | Cron intervals for expiry cleanup / Discord digests |
 | `LOG_LEVEL` | no | `INFO` (default) or `DEBUG` (per-request logging) |

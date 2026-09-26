@@ -77,9 +77,14 @@ function amountMatches(gatewayAmount, expectedAmount, currency) {
 // Razorpay
 // ---------------------------------------------------------------------------
 
-const razorpayBase = (environment) => (String(environment).toLowerCase() === 'live'
-  ? 'https://api.razorpay.com/v1'
-  : 'https://api.razorpay.com/v1'); // same host; the key decides the mode
+// Razorpay uses one API host for both modes; the key decides test vs live.
+// apiBase is overridable so the verification path can be exercised against a
+// local server that speaks the same contract.
+const razorpayBase = (environment, cfg) => {
+  const override = cfg && cfg.apiBase;
+  if (override) return String(override).replace(/\/$/, '');
+  return 'https://api.razorpay.com/v1';
+};
 
 /** Can we actually verify Razorpay payments? */
 function canVerifyRazorpay(cfg) {
@@ -96,30 +101,34 @@ async function verifyRazorpay({ reqBody, expected, cfg }) {
   const signature = live.razorpay_payment_signature;
   if (!paymentId || !orderId) return bad('Razorpay payment reference missing');
 
-  // 1. Local signature check: HMAC-SHA256(payment_id + "|" + order_id, key_secret)
+  // 1. Local signature check. Razorpay documents this as
+  //    hmac_sha256(order_id + "|" + razorpay_payment_id, key_secret) - the
+  //    ORDER id comes first. Getting the order reversed silently rejects every
+  //    genuine payment, so it is pinned by a test.
   if (!signature) return bad('Razorpay payment signature missing - refusing an unverified payment');
   const expectedSig = crypto.createHmac('sha256', cfg.keySecret)
-    .update(`${paymentId}|${orderId}`)
+    .update(`${orderId}|${paymentId}`)
     .digest('hex');
   if (!safeEqual(signature, expectedSig)) {
     return bad('Razorpay payment signature does not match');
   }
 
   // 2. Authoritative check with Razorpay: the signature alone cannot prove the
-  //    payment was captured.
-  let Razorpay;
-  try {
-    Razorpay = require('razorpay');
-  } catch (e) {
-    return bad('Razorpay SDK unavailable, cannot verify payment');
-  }
-  const instance = new Razorpay({ key_id: cfg.keyId, key_secret: cfg.keySecret });
-  let payment;
-  try {
-    payment = await instance.payments.fetch(paymentId);
-  } catch (e) {
-    logger.error('razorpay payments.fetch failed', e && e.message);
+  //    payment was captured. Fetch it over HTTP Basic auth ourselves rather than
+  //    through the SDK, so the call is bounded by our timeout and can be pointed
+  //    at a stub that speaks the same contract.
+  const basic = Buffer.from(`${cfg.keyId}:${cfg.keySecret}`).toString('base64');
+  const fetched = await httpGet(`${razorpayBase(cfg.environment, cfg)}/payments/${encodeURIComponent(paymentId)}`, {
+    timeout: TIMEOUT_MS,
+    headers: { Authorization: `Basic ${basic}`, Accept: 'application/json' },
+  });
+  if (!fetched.ok) {
+    logger.error('razorpay payment fetch failed', fetched.error || fetched.statusCode);
     return bad('Could not confirm the payment with Razorpay. Contact support if you were charged.');
+  }
+  const payment = fetched.body;
+  if (!payment || typeof payment !== 'object') {
+    return bad('Razorpay returned an unexpected response for this payment');
   }
   if (!payment || payment.status !== 'captured') {
     return bad(`Razorpay payment is not captured (status: ${(payment && payment.status) || 'unknown'})`);
@@ -193,6 +202,23 @@ async function verifyPayU({ reqBody, expected, cfg }) {
 
   // 2. verify_payment API - proves the transaction succeeded at PayU, which the
   //    browser-supplied status cannot.
+  // The reverse hash above is already cryptographic proof that this response
+  // came from PayU (it needs the merchant salt, which never leaves the server).
+  // The verify_payment API adds proof that the txnid is actually settled, but
+  // it is an external dependency that fails for reasons unrelated to fraud - a
+  // throttled key returns 429, and some accounts have no API access. So it is
+  // on by default and can be turned off per-merchant via payU.verifyApi.
+  if (cfg.verifyApi === false) {
+    logger.warn('PAYU_VERIFY_API is disabled - accepting the reverse-hash-only proof for this PayU payment.');
+    // The waiver drops the *remote confirmation* only. The amount and currency
+    // must still match our own price, or a genuine-but-cheap PayU response could
+    // be replayed to claim an expensive product.
+    if (!amountMatches(r.amount, expected.amount, expected.currency)) {
+      return bad('PayU amount does not match the quoted price');
+    }
+    return ok({ orderId: String(txnid), gatewayRef: String(txnid), amount: expected.amount, currency: 'INR', method: 'payu' });
+  }
+
   const url = payuPostservice(cfg.environment);
   const res = await httpPostForm(url, {
     key: cfg.merchantKey,
@@ -202,13 +228,18 @@ async function verifyPayU({ reqBody, expected, cfg }) {
   }, { timeout: TIMEOUT_MS, headers: { Accept: 'application/json' } });
 
   if (!res.ok) {
-    logger.error('payu verify_payment transport failure', res.error);
-    return bad('Could not confirm the payment with PayU. Contact support if you were charged.');
+    logger.error('payu verify_payment transport failure', res.statusCode, res.error);
+    const throttled = res.statusCode === 429;
+    return bad(throttled
+      ? 'PayU is rate limiting verification requests. Re-enable verification or reconcile this order with PayU before retrying.'
+      : 'Could not confirm the payment with PayU. Contact support if you were charged.');
   }
   const body = (res.body && typeof res.body === 'object') ? res.body : {};
-  // PayU answers 200 with { status: "failure", error_message: ... } on problems.
+  // PayU answers 200 with { status: 0, msg: '...' } on failure and
+  // { status: 'success', transaction_details: {...} } when the txn is real.
   if (String(body.status || '').toLowerCase() !== 'success') {
-    return bad(`PayU could not verify this transaction (${body.error_message || body.error_code || 'unknown error'})`);
+    const why = body.error_message || body.msg || body.error_code || 'no reason given';
+    return bad(`PayU could not verify this transaction (${why})`);
   }
   const details = body.transaction_details || {};
   if (String(details.status || '').toLowerCase() !== 'success') {
@@ -230,9 +261,13 @@ async function verifyPayU({ reqBody, expected, cfg }) {
 // PayPal
 // ---------------------------------------------------------------------------
 
-const paypalBase = (environment) => (String(environment).toLowerCase() === 'live'
-  ? 'https://api-m.paypal.com'
-  : 'https://api-m.sandbox.paypal.com');
+const paypalBase = (environment, cfg) => {
+  const override = cfg && cfg.apiBase;
+  if (override) return String(override).replace(/\/$/, '');
+  return String(environment).toLowerCase() === 'live'
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
+};
 
 function canVerifyPayPal(cfg) {
   return !!(cfg && cfg.paypal_client_id && cfg.paypal_client_secret);
@@ -240,7 +275,7 @@ function canVerifyPayPal(cfg) {
 
 async function paypalAccessToken(cfg) {
   const basic = Buffer.from(`${cfg.paypal_client_id}:${cfg.paypal_client_secret}`).toString('base64');
-  const res = await httpPostForm(`${paypalBase(cfg.environment)}/v1/oauth2/token`, {
+  const res = await httpPostForm(`${paypalBase(cfg.environment, cfg)}/v1/oauth2/token`, {
     grant_type: 'client_credentials',
   }, { timeout: TIMEOUT_MS, headers: { Authorization: `Basic ${basic}`, Accept: 'application/json' } });
   if (!res.ok || !res.body || !res.body.access_token) {
@@ -264,12 +299,12 @@ async function verifyPayPal({ reqBody, expected, cfg }) {
   const auth = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
   let order = null;
   // Prefer capture when we can, so the money is actually moved server-side.
-  const capture = await httpPostJson(`${paypalBase(cfg.environment)}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, { timeout: TIMEOUT_MS, headers: auth });
+  const capture = await httpPostJson(`${paypalBase(cfg.environment, cfg)}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, { timeout: TIMEOUT_MS, headers: auth });
   if (capture.ok && capture.body) {
     order = capture.body;
   } else {
     // Already-captured (the JS SDK captures client-side) or not approvable: read it.
-    const get = await httpGet(`${paypalBase(cfg.environment)}/v2/checkout/orders/${encodeURIComponent(orderId)}`, { timeout: TIMEOUT_MS, headers: auth });
+    const get = await httpGet(`${paypalBase(cfg.environment, cfg)}/v2/checkout/orders/${encodeURIComponent(orderId)}`, { timeout: TIMEOUT_MS, headers: auth });
     if (!get.ok || !get.body) {
       logger.error('paypal order fetch failed', get.error);
       return bad('Could not confirm the order with PayPal. Contact support if you were charged.');

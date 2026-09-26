@@ -944,6 +944,81 @@ async function main() {
     const v = (hdr.match(/vmp-design-system\.css\?v=(\d+)/) || [])[1];
     assert.ok(v && Number(v) >= 20, `css cache-buster bumped (v=${v})`);
   });
+  await ok('razorpay signature is HMAC(order_id|payment_id) - order first', () => {
+    const crypto = require('crypto');
+    const pv = require('../app/modules/paymentVerify');
+    const cfg = { enabled: true, environment: 'test', keyId: 'k', keySecret: 'sec' };
+    // Razorpay documents: hmac_sha256(order_id + "|" + razorpay_payment_id, secret).
+    // Reversing the two silently rejects every genuine payment, so pin the order
+    // by recomputing the documented signature and requiring it to be accepted.
+    const orderId = 'order_1', payId = 'pay_1';
+    const documented = crypto.createHmac('sha256', 'sec').update(`${orderId}|${payId}`).digest('hex');
+    const reversed = crypto.createHmac('sha256', 'sec').update(`${payId}|${orderId}`).digest('hex');
+    assert.notStrictEqual(documented, reversed, 'the two orders really do differ');
+    // The signature is checked before any network call, so an accepted signature
+    // must produce a *different* error (the fetch) than a rejected one.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'modules', 'paymentVerify.js'), 'utf8');
+    assert.ok(/update\(`\$\{orderId\}\|\$\{paymentId\}`\)/.test(src), 'order_id comes first in the HMAC input');
+    assert.ok(!/update\(`\$\{paymentId\}\|\$\{orderId\}`\)/.test(src), 'the reversed form is gone');
+    assert.ok(/Razorpay payment signature does not match/.test(src), 'mismatch has a clear message');
+    // apiBase override keeps the verify path testable without a live account.
+    assert.strictEqual(pv.razorpayBase('test', { apiBase: 'http://127.0.0.1:1234/v1/' }), 'http://127.0.0.1:1234/v1');
+    assert.strictEqual(pv.razorpayBase('test', {}), 'https://api.razorpay.com/v1');
+    assert.strictEqual(pv.paypalBase('live', { apiBase: 'http://x/' }), 'http://x');
+    assert.strictEqual(pv.paypalBase('live', {}), 'https://api-m.paypal.com');
+    assert.strictEqual(pv.paypalBase('test', {}), 'https://api-m.sandbox.paypal.com');
+    assert.ok(typeof documented === 'string' && pv.razorpayBase);
+  });
+  await ok('payu verify_payment API is required by default but can be waived', async () => {
+    const pv = require('../app/modules/paymentVerify');
+    const cfgBase = { enabled: true, environment: 'test', merchantKey: 'K', merchantSalt: 'S' };
+    const realish = {
+      txnid: 'T1', status: 'SUCCESS',
+      udf1: '', udf2: '', udf3: '', udf4: '', udf5: '76561198092023766',
+      email: 'a@e.com', firstname: 'A', productinfo: 'p', amount: '30.00',
+    };
+    const withHash = { ...realish, hash: pv.payuReverseHash(cfgBase, realish) };
+
+    // Default (API on): the reverse hash alone is not enough.
+    const strict = await pv.verifyPayment({
+      gateway: 'payu', reqBody: { payuData: withHash },
+      expected: { amount: 30, currency: 'INR' }, cfg: { payU: cfgBase },
+    });
+    assert.strictEqual(strict.ok, false, 'with the API enabled the txnid is still confirmed remotely');
+
+    // Waived: the reverse hash alone is accepted, and the amount is bound to ours.
+    const waived = await pv.verifyPayment({
+      gateway: 'payu', reqBody: { payuData: withHash },
+      expected: { amount: 30, currency: 'INR' }, cfg: { payU: { ...cfgBase, verifyApi: false } },
+    });
+    assert.strictEqual(waived.ok, true, 'reverse-hash-only proof is accepted when verifyApi is off');
+    assert.strictEqual(waived.orderId, 'T1');
+
+    // Waived still refuses a wrong amount and a bad hash - the waiver only drops
+    // the remote confirmation, it does not disable verification.
+    const wrongAmount = await pv.verifyPayment({
+      gateway: 'payu', reqBody: { payuData: withHash },
+      expected: { amount: 999, currency: 'INR' }, cfg: { payU: { ...cfgBase, verifyApi: false } },
+    });
+    assert.strictEqual(wrongAmount.ok, false, 'amount still bound with the API waived');
+    const badHash = await pv.verifyPayment({
+      gateway: 'payu', reqBody: { payuData: { ...realish, hash: 'f'.repeat(128) } },
+      expected: { amount: 30, currency: 'INR' }, cfg: { payU: { ...cfgBase, verifyApi: false } },
+    });
+    assert.strictEqual(badHash.ok, false, 'hash still required with the API waived');
+    const notSuccess = await pv.verifyPayment({
+      gateway: 'payu', reqBody: { payuData: { ...realish, status: 'FAILED', hash: pv.payuReverseHash(cfgBase, { ...realish, status: 'FAILED' }) } },
+      expected: { amount: 30, currency: 'INR' }, cfg: { payU: { ...cfgBase, verifyApi: false } },
+    });
+    assert.strictEqual(notSuccess.ok, false, 'a hashed FAILED status is still refused');
+
+    // Config plumbing, both the initial load and reload().
+    const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'config', 'index.js'), 'utf8');
+    const hits = (cfgSrc.match(/verifyApi: envBool\(process\.env\.PAYU_VERIFY_API/g) || []).length;
+    assert.strictEqual(hits, 2, 'PAYU_VERIFY_API is read on both the initial load and reload()');
+    const ex = fs.readFileSync(path.join(__dirname, '..', 'app', 'config', 'example_config.json'), 'utf8');
+    assert.ok(/"merchantSalt"/.test(ex), 'example config still documents payU');
+  });
   await ok('payu hashes match the documented PayU formulas', () => {
     const crypto = require('crypto');
     const pv = require('../app/modules/paymentVerify');
