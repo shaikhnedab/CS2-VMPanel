@@ -26,6 +26,7 @@ const myDashboardModel = require("../models/myDashboardModel.js");
 const salesModal = require("../models/salesModel.js");
 const vipModel = require("../models/vipModel.js");
 const { refreshBestEffort } = require("../utils/refreshCFGInServer")
+const { gatewaySupportsCurrency, unsupportedCurrencyMessage } = require("../utils/currency")
 const { logThisActivity } = require("../utils/activityLogger.js");
 const config = require('../config');
 const paypalClientID = config.payment_gateways.paypal.paypal_client_id
@@ -241,6 +242,12 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           if (Number(srv.vip_price) !== Number(reqBody.serverData.vip_price)) return reject("Price mismatch, please retry");
           if (String(srv.vip_currency) !== String(reqBody.serverData.vip_currency)) return reject("Currency mismatch");
           if (Number(srv.vip_days) !== Number(reqBody.serverData.vip_days)) return reject("Plan mismatch");
+          // The storefront only offers a gateway that can settle this row's
+          // currency; re-check here so a crafted request cannot route a
+          // non-INR server through an India-only gateway.
+          if (!gatewaySupportsCurrency(reqBody.gateway, srv.vip_currency)) {
+            return reject(unsupportedCurrencyMessage(reqBody.gateway, srv.vip_currency));
+          }
         }
       }
       // Bundles are validated per-server inside the newPurchaseBundle branch via checkVipExists;

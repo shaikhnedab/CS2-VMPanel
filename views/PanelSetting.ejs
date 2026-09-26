@@ -303,8 +303,13 @@
                           <div class="col-md-6">
                             <div class="form-group bmd-form-group">
                               <label class="bmd-label-floating">Currency</label>
-                              <input type="text" name="servertablecurrency" class="form-control"
-                                id="servertablecurrency" value="<%=panelSetting.platform_currency%>" disabled>
+                              <select class="form-control" name="servertablecurrency"
+                                id="serverCurrency_add" required>
+                                <%['USD','INR'].forEach(function(c){ %>
+                                <option value="<%=c%>" <%=String(panelSetting.platform_currency).toUpperCase()===c?'selected':''%>><%=c%></option>
+                                <%}); %>
+                              </select>
+                              <small class="text-muted">Razorpay and PayU can only charge INR servers.</small>
                             </div>
                           </div>
                         </div>
@@ -397,8 +402,13 @@
                           <div class="col-md-6">
                             <div class="form-group bmd-form-group">
                               <label class="bmd-label-floating">Currency</label>
-                              <input type="text" name="servertablecurrency" class="form-control"
-                                id="servertablecurrency" value="<%=panelSetting.platform_currency%>" disabled>
+                              <select class="form-control" name="servertablecurrency"
+                                id="serverCurrency_update" required>
+                                <%['USD','INR'].forEach(function(c){ %>
+                                <option value="<%=c%>" <%=String(panelSetting.platform_currency).toUpperCase()===c?'selected':''%>><%=c%></option>
+                                <%}); %>
+                              </select>
+                              <small class="text-muted">Razorpay and PayU can only charge INR servers.</small>
                             </div>
                           </div>
                         </div>
@@ -483,8 +493,13 @@
                           <div class="col-md-6">
                             <div class="form-group bmd-form-group">
                               <label class="bmd-label-floating">Currency</label>
-                              <input type="text" name="servertablecurrency" class="form-control"
-                                id="bundle_currency_add" value="<%=panelSetting.platform_currency%>" disabled>
+                              <select class="form-control" name="servertablecurrency"
+                                id="bundle_currency_add" required>
+                                <%['USD','INR'].forEach(function(c){ %>
+                                <option value="<%=c%>" <%=String(panelSetting.platform_currency).toUpperCase()===c?'selected':''%>><%=c%></option>
+                                <%}); %>
+                              </select>
+                              <small class="text-muted">Razorpay and PayU can only charge INR bundles.</small>
                             </div>
                           </div>
                           <div class="col-md-6">
@@ -630,6 +645,8 @@
 
     <script>
       const curentAdminType =<%=adminType%>
+      // Default currency for newly added servers/bundles.
+      window.vmpPlatformCurrency = "<%=panelSetting.platform_currency%>";
     </script>
     <script src="./js/PanelSettings.js"></script>
     <script src="./js/customConfirm.js"></script>

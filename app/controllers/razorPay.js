@@ -24,7 +24,7 @@ const config = require("../config");
 const RazorPay = require("razorpay");
 const { getUUID } = require("../utils/crypto");
 const razorpayConfig = config.payment_gateways.razorPay;
-const { resolvePlatformCurrency } = require("../utils/currency");
+const { resolveRowCurrency, gatewaySupportsCurrency, unsupportedCurrencyMessage } = require("../utils/currency");
 
 exports.initRazorpayPayment = async (req, res) => {
   try {
@@ -60,10 +60,13 @@ const createRzpOrder = async (reqBody, steamId) => {
   const { server_name, vip_price, vip_days } = reqBody.serverData;
   const productInfo = `${vip_days} days VIP for ${server_name} ${purchaseType(reqBody.type)}`;
 
-  // Razorpay is India-only: it accepts INR and nothing else. Never trust the
-  // per-server vip_currency for the charge (a row still carrying "USD" made
-  // Razorpay reject the order outright), and never trust the client either.
-  const currency = await resolvePlatformCurrency(reqBody.serverData);
+  // Razorpay is India-only: INR and nothing else. The server row declares the
+  // price currency, so refuse rather than silently reinterpreting a USD amount
+  // as rupees (which is what used to happen and then got rejected anyway).
+  const currency = await resolveRowCurrency(reqBody.serverData);
+  if (!gatewaySupportsCurrency('razorpay', currency)) {
+    throw unsupportedCurrencyMessage('razorpay', currency);
+  }
 
   const rzpOrderOptions = {
     amount: vip_price * 100, // Convert price to smallest subunit (50 rupees -> 5000 paise).,

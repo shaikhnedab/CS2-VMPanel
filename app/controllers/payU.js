@@ -60,6 +60,15 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
       let productData = reqBody.serverData
       let productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")
 
+      // PayU/BOLT settles in INR only and takes no currency parameter, so a
+      // server priced in another currency would be charged a rupee amount
+      // under a foreign label. Refuse instead of taking the money.
+      const { resolveRowCurrency, gatewaySupportsCurrency, unsupportedCurrencyMessage } = require('../utils/currency');
+      const payuCurrency = await resolveRowCurrency(productData);
+      if (!gatewaySupportsCurrency('payu', payuCurrency)) {
+        return reject(unsupportedCurrencyMessage('payu', payuCurrency));
+      }
+
       let txnID = createTXNid()
       // PayU return URLs follow the configured PUBLIC_BASE_URL, else the
       // address the buyer actually used (never a static HOSTNAME, and https

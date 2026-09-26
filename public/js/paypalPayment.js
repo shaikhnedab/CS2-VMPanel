@@ -53,8 +53,8 @@ document.addEventListener('DOMContentLoaded', function () {
 function setPayPalButton(id, serverData, type) {
 
   let server = serverData.server_name ? serverData.server_name : ''
-  // Charge the panel currency, not the row's possibly-stale vip_currency, so the
-  // amount the buyer approves matches the amount the INR gateways take.
+  // PayPal is multi-currency, so it charges the currency the server row is
+  // priced in (the panel currency is only the default for rows without one).
   let currency = (typeof window.vmpProductCurrency === 'function')
     ? window.vmpProductCurrency(serverData)
     : (serverData.vip_currency ? serverData.vip_currency : '')

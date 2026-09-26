@@ -60,6 +60,15 @@ const addPanelServerBundleFunc = (reqBody, username) => {
       if (!reqBody.bundlename) return reject("Operation Fail!, Bundle name is Missing");
       if (!reqBody.bundleprice) return reject("Operation Fail!, Bundle Price is Missing");
       if (!reqBody.bundlecurrency) return reject("Operation Fail!, Bundle Currency is Missing");
+      // Same trust rule as servers: the bundle currency decides the quote.
+      {
+        const { SUPPORTED_CURRENCIES, normalizeCurrency } = require('../utils/currency');
+        const cur = normalizeCurrency(reqBody.bundlecurrency);
+        if (!cur || !SUPPORTED_CURRENCIES.includes(cur)) {
+          return reject(`Operation Fail!, Bundle Currency must be one of ${SUPPORTED_CURRENCIES.join(', ')}`);
+        }
+        reqBody.bundlecurrency = cur;
+      }
       if (!reqBody.bundlesubdays) return reject("Operation Fail!, Bundle Subscription days are Missing");
       if (!reqBody.bundlevipflag) return reject("Operation Fail!, Bundle VIP Flag is Missing");
 

@@ -18,7 +18,18 @@
 */
 
 //-----------------------------------------------------------------------------------------------------
-// 
+// Per-server / per-bundle currency
+//
+// Each server and bundle is priced in its own currency; the panel setting is
+// only the default for new rows. A form reset would otherwise drop the select
+// back to its first option (USD) instead of the panel default, so restore it.
+//-----------------------------------------------------------------------------------------------------
+
+function vmpResetCurrencyDefault(selector) {
+  const el = $(selector);
+  const def = String((window.vmpPlatformCurrency || '')).toUpperCase();
+  if (el.length && def) el.val(def);
+}
 
 function addNewPAdminajax() {
   if (curentAdminType === 1) {
@@ -358,7 +369,7 @@ function addNewPServerajax() {
           "serverrconcmd": $('#servertableRCONCmd_add').val() ? $('#servertableRCONCmd_add').val() : null,
           "servertotalvip": $('#servertableTotalVIPSlots_add').val() ? $('#servertableTotalVIPSlots_add').val() : null,
           "servervipprice": $('#servertableVIPPrice_add').val() ? $('#servertableVIPPrice_add').val() : null,
-          "servervipcurrency": $('#servertablecurrency').val() ? $('#servertablecurrency').val() : null,
+          "servervipcurrency": $('#serverCurrency_add').val() ? $('#serverCurrency_add').val() : null,
           "servervipflag": $('#servertableVIPFlag_add').val() ? $('#servertableVIPFlag_add').val() : null,
           "servervipdays": $('#servertableVIPDays_add').val() ? $('#servertableVIPDays_add').val() : null,
           "submit": "insert",
@@ -372,6 +383,7 @@ function addNewPServerajax() {
           if (response.success == true) {
             fetchPServerListajax();
             $('#myForm_addPServer').trigger("reset");
+            vmpResetCurrencyDefault('#serverCurrency_add');
           }
         })
         .catch(error => {
@@ -424,7 +436,7 @@ function updatePServerajax() {
           "serverrconcmd": $('#servertableRCONCmd_update').val() ? $('#servertableRCONCmd_update').val() : null,
           "servertotalvip": $('#servertableTotalVIPSlots_update').val(),
           "servervipprice": $('#servertableVIPPrice_update').val(),
-          "servervipcurrency": $('#servertablecurrency').val(),
+          "servervipcurrency": $('#serverCurrency_update').val(),
           "servervipflag": $('#servertableVIPFlag_update').val(),
           "servervipdays": $('#servertableVIPDays_update').val(),
           "submit": "update",
@@ -604,6 +616,7 @@ function addNewPanelServerBundle() {
           if (response.success == true) {
             fetchPBundleListajax();
             $('#myForm_addBundle').trigger("reset");
+            vmpResetCurrencyDefault('#bundle_currency_add');
           }
         })
         .catch(error => {
@@ -774,7 +787,11 @@ $(document).ready(function () {
           $('#servertableRCONCmd_update').val(serverData.rcon_refresh_cmd || 'css_viprefresh')
           $('#servertableTotalVIPSlots_update').val(serverData.vip_slots)
           $('#servertableVIPPrice_update').val(serverData.vip_price)
-          // $('#servertableCurrency_update').val(serverData.vip_currency)
+          // Populate the per-server currency so saving an unrelated field does
+          // not silently reset it (this line used to be commented out, and the
+          // field was disabled, so every server inherited the panel currency).
+          const cur = String(serverData.vip_currency || '').toUpperCase();
+          if (cur) $('#serverCurrency_update').val(cur);
           $('#servertableVIPFlag_update').val(serverData.vip_flag)
           $('#servertableVIPDays_update').val(serverData.vip_days)
           $('#servername_update').focus()

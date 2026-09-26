@@ -58,6 +58,19 @@ const addPanelServerFunc = (reqBody, username) => {
       // validation
       if (!reqBody.tablename) return reject("Operation Fail!, Table Name is not provided");
       if (!reqBody.servername) return reject("Operation Fail!, Server Name is not provided");
+      // Per-server currency: the admin picks it, but never trust the client's
+      // value blindly - it decides what the buyer is quoted and charged.
+      {
+        const { SUPPORTED_CURRENCIES, normalizeCurrency } = require('../utils/currency');
+        const picked = normalizeCurrency(reqBody.servervipcurrency);
+        if (reqBody.servervipcurrency !== undefined && reqBody.servervipcurrency !== null && reqBody.servervipcurrency !== '' && !picked) {
+          return reject(`Operation Fail!, currency must be one of ${SUPPORTED_CURRENCIES.join(', ')}`);
+        }
+        if (picked && !SUPPORTED_CURRENCIES.includes(picked)) {
+          return reject(`Operation Fail!, currency must be one of ${SUPPORTED_CURRENCIES.join(', ')}`);
+        }
+        if (picked) reqBody.servervipcurrency = picked;
+      }
       // Optional per-server RCON refresh command (e.g. `fake_rcon css_viprefresh`
       // for CS2 servers behind the fake-rcon bridge). Null/blank = legacy
       // `css_viprefresh` default. Strict charset: the string is sent verbatim

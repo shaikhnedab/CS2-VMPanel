@@ -1,26 +1,28 @@
 'use strict';
 
 /**
- * Single source of truth for "what currency is this panel charging in?".
+ * Currency rules for the store.
  *
- * The panel has one currency: `platform_currency` in panel settings (the admin
- * UI even prefills a new server's currency field from it). The per-server
- * `vip_currency` column is legacy and can disagree with it — rows created
- * before the setting existed still carry the old default.
+ * A panel can sell in more than one currency: each server (and bundle) row
+ * carries its own `vip_currency`, so an international server can be priced in
+ * USD while an Indian one is priced in INR. The panel's `platform_currency`
+ * setting is the *default* used for new rows (and the fallback for rows that
+ * never got one) — it no longer overrides what a server declares.
  *
- * That disagreement is not cosmetic, it is a money bug:
- *   - Razorpay is India-only and accepts INR alone, so sending it a row's
- *     "USD" makes it reject the order outright.
- *   - PayU/BOLT sends no currency at all and settles in INR, so a "USD" label
- *     on the storefront misrepresents the charge.
- *   - PayPal is multi-currency and happily charges the row's "USD", which then
- *     contradicts what the INR-only gateways take for the same product.
+ * The important constraint is that not every gateway can settle every
+ * currency:
+ *   - Razorpay and PayU/BOLT are India-only and settle INR alone. Pointing
+ *     either at a USD server makes Razorpay reject the order, and makes PayU
+ *     quietly charge a rupee amount under a dollar label.
+ *   - PayPal is multi-currency and can charge whatever the row declares.
  *
- * So: the panel currency wins everywhere, and the per-server value is used only
- * as a fallback for panels that never set one. Never trust a client-sent
- * currency for the charge.
+ * So the storefront only offers a gateway when it supports that row's
+ * currency, and the settlement controllers re-check server-side (the view gate
+ * is cosmetic and must never be the only guard).
  */
 
+// Kept in sync with the admin currency pickers.
+const SUPPORTED_CURRENCIES = ['USD', 'INR'];
 const FALLBACK_CURRENCY = 'USD';
 
 // Gateways that can only settle in one currency.
@@ -34,23 +36,35 @@ function normalizeCurrency(value) {
 }
 
 /**
- * Resolve the currency to charge, given an optional server/bundle row.
- * @param {Object} [row] server data that may carry a legacy `vip_currency`
- * @param {string} [platformCurrency] override, e.g. from an already-loaded
- *        panelSetting; looked up from the DB when omitted
- * @returns {Promise<string>} ISO-4217-ish 3-letter code
+ * The currency a given server/bundle row is sold in. The row wins; the panel
+ * setting is only a default for rows that never declared one.
+ * @param {Object} [row] server or bundle data with a `vip_currency`
+ * @param {string} [platformCurrency] already-loaded platform setting
+ * @returns {string} 3-letter code
  */
-async function resolvePlatformCurrency(row, platformCurrency) {
+function currencyForRow(row, platformCurrency) {
+  return normalizeCurrency(row && row.vip_currency)
+    || normalizeCurrency(platformCurrency)
+    || FALLBACK_CURRENCY;
+}
+
+/**
+ * Same as currencyForRow, but reads the panel setting from the DB when the
+ * caller has not already loaded it.
+ * @returns {Promise<string>}
+ */
+async function resolveRowCurrency(row, platformCurrency) {
+  const own = normalizeCurrency(row && row.vip_currency);
+  if (own) return own;
   let platform = normalizeCurrency(platformCurrency);
   if (!platform) {
     try {
       const settingsModal = require('../models/panelSettingModal.js');
       const settings = await settingsModal.getAllSettings();
       platform = normalizeCurrency(settings && settings.platform_currency);
-    } catch (e) { /* fall through to the row/default */ }
+    } catch (e) { /* fall through to the default */ }
   }
-  if (platform) return platform;
-  return normalizeCurrency(row && row.vip_currency) || FALLBACK_CURRENCY;
+  return platform || FALLBACK_CURRENCY;
 }
 
 /** True when `gateway` can only settle in INR. */
@@ -58,4 +72,30 @@ function isInrOnlyGateway(gateway) {
   return INR_ONLY_GATEWAYS.includes(String(gateway || '').toLowerCase());
 }
 
-module.exports = { resolvePlatformCurrency, normalizeCurrency, isInrOnlyGateway, FALLBACK_CURRENCY };
+/**
+ * Whether `gateway` is able to charge `currency` at all.
+ * PayPal handles any supported currency; the India-only gateways require INR.
+ */
+function gatewaySupportsCurrency(gateway, currency) {
+  const cur = normalizeCurrency(currency);
+  if (!cur || !SUPPORTED_CURRENCIES.includes(cur)) return false;
+  return isInrOnlyGateway(gateway) ? cur === 'INR' : true;
+}
+
+/** Human-readable reason a gateway cannot be used for a currency. */
+function unsupportedCurrencyMessage(gateway, currency) {
+  const name = String(gateway || '').toLowerCase() === 'razorpay' ? 'Razorpay' : 'PayU';
+  return `${name} can only charge in INR, but this server is priced in ${normalizeCurrency(currency) || currency}. `
+    + `Set the server currency to INR, or use PayPal for ${normalizeCurrency(currency) || currency}.`;
+}
+
+module.exports = {
+  SUPPORTED_CURRENCIES,
+  FALLBACK_CURRENCY,
+  normalizeCurrency,
+  currencyForRow,
+  resolveRowCurrency,
+  isInrOnlyGateway,
+  gatewaySupportsCurrency,
+  unsupportedCurrencyMessage,
+};

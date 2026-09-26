@@ -46,12 +46,19 @@ function slotId(prefix, tblOrName, i) {
 <!-- Paypal SDK Settings start -->
 <script>
   var paypalActive = <%=paypalActive%>;
-  // The panel currency is what every gateway actually charges. A server row's
-  // own vip_currency can be stale (legacy rows still carry the old "USD"
-  // default), which would quote a price the INR-only gateways never take.
+  // Each server/bundle row is priced in its own currency; the panel setting is
+  // only the default for rows that never declared one.
   window.vmpPlatformCurrency = "<%=panelSetting.platform_currency%>";
   window.vmpProductCurrency = function (serverData) {
-    return (window.vmpPlatformCurrency || (serverData && serverData.vip_currency) || '').toUpperCase();
+    return ((serverData && serverData.vip_currency) || window.vmpPlatformCurrency || '').toUpperCase();
+  };
+  // Razorpay and PayU settle in INR only, so they are offered per-card on that
+  // card's currency — not on the panel currency.
+  window.vmpGatewaySupportsCurrency = function (gateway, currency) {
+    var cur = String(currency || '').toUpperCase();
+    if (cur !== 'USD' && cur !== 'INR') return false;
+    if (gateway === 'payu' || gateway === 'razorpay') return cur === 'INR';
+    return true;
   };
 </script>
 <%if(paypalActive){%>
@@ -66,7 +73,14 @@ function slotId(prefix, tblOrName, i) {
   var payuActive = <%=payuActive%>;
 </script>
 
-<%if(payuActive && panelSetting.platform_currency==="INR"){%>
+<%# Load the India-only SDKs when the admin enabled them AND at least one
+    server or bundle is actually priced in INR. %>
+<%var anyInrPriced = [].concat(serverArray || [], bundleArray || []).some(function (r) {
+      return String((r && (r.vip_currency || r.bundle_currency)) || '').toUpperCase() === 'INR';
+    });
+  var loadPayuSdk = payuActive && (anyInrPriced || (!serverArray && !bundleArray));
+  var loadRzpSdk = razorpayActive && (anyInrPriced || (!serverArray && !bundleArray));%>
+<%if(loadPayuSdk){%>
 <%if(payuEnv=='test'){%>
 <!-- BOLT Sandbox/test //-->
 <script id="bolt" defer src="https://sboxcheckout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="913f9e"
@@ -82,7 +96,7 @@ function slotId(prefix, tblOrName, i) {
 <script>
   var razorpayActive = <%=razorpayActive%>
 </script>
-<%if(razorpayActive && panelSetting.platform_currency === "INR"){%>
+<%if(loadRzpSdk){%>
 <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <%}%>
 
@@ -179,10 +193,13 @@ function slotId(prefix, tblOrName, i) {
                         <%}%>
                       </p>
                       <h4 class="card-title truncate" title="<%=serverArray[i].server_name%>"><%=serverArray[i].server_name || 'Unnamed server'%></h4>
-                      <%# Show the currency that will actually be charged. A row's
-                          own vip_currency can be a stale legacy value. %>
-                      <%var shownCurrency = String(panelSetting.platform_currency || serverArray[i].vip_currency || '').toUpperCase();%>
-                      <div class="vmp-price tnum"><%=serverArray[i].vip_price ? serverArray[i].vip_price + ' ' + shownCurrency : 'Price on request'%></div>
+                      <%# This server is priced in its own currency; the panel
+                          setting is only the default for rows without one. %>
+                      <%var cardCurrency = String(serverArray[i].vip_currency || panelSetting.platform_currency || '').toUpperCase();
+                        var cardPayu = payuActive && cardCurrency === "INR";
+                        var cardRzp = razorpayActive && cardCurrency === "INR";
+                        var cardAny = paypalActive || cardPayu || cardRzp;%>
+                      <div class="vmp-price tnum"><%=serverArray[i].vip_price ? serverArray[i].vip_price + ' ' + cardCurrency : 'Price on request'%></div>
                       <div class="vmp-perks">
                         <%if(serverArray[i].server_ip && serverArray[i].server_port){%>
                         <a class="vmp-badge ok" href="<%='steam://connect/'+serverArray[i].server_ip+':'+serverArray[i].server_port%>"><span class="vmp-dot pulse" aria-hidden="true"></span>Join server</a>
@@ -192,12 +209,12 @@ function slotId(prefix, tblOrName, i) {
                     <div class="card-footer">
                       <%if(serverArray[i].vmpOwned){%>
                       <%if(typeof giftingActive === 'undefined' || giftingActive){
-                          // Only offer gateways the admin actually configured, and
-                          // never leave an empty payment slot behind (it adds a
-                          // phantom row to the footer's grid).
-                          var ownedPayu = payuActive && panelSetting.platform_currency==="INR";
-                          var ownedRzp = razorpayActive && panelSetting.platform_currency==="INR";
-                          var ownedAny = paypalActive || ownedPayu || ownedRzp;
+                          // Only offer gateways the admin configured AND that can
+                          // settle this card's currency. Never leave an empty
+                          // payment slot behind (it adds a phantom grid row).
+                          var ownedPayu = cardPayu;
+                          var ownedRzp = cardRzp;
+                          var ownedAny = cardAny;
                       %>
                       <%if(ownedAny){%>
                       <p class="vmp-hint" style="margin:0 0 8px">You already hold VIP here. Turn on <strong>Gift this purchase</strong> above to buy VIP for someone else.</p>
@@ -222,15 +239,18 @@ function slotId(prefix, tblOrName, i) {
                       <%if(paypalActive){%>
                       <div class="vmp-paypal-slot" id="<%= slotId('buy', serverArray[i].tbl_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase"></div>
                       <%}%>
-                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <%if(cardPayu){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase" aria-label="Buy with PayU">
                         <img src="./images/payumoney.png" height="20" width="76" alt="PayU">
                       </button>
                       <%}%>
-                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <%if(cardRzp){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase" aria-label="Buy with Razorpay">
                         <img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay">
                       </button>
+                      <%}%>
+                      <%if(!cardAny){%>
+                      <p class="vmp-hint" style="margin:0">No payment method is available for <%=cardCurrency%> — please contact an admin.</p>
                       <%}%>
                       <%}%>
                     </div>
@@ -260,8 +280,10 @@ function slotId(prefix, tblOrName, i) {
                     <div class="card-body">
                       <p class="eyebrow">Bundle · <%=bundleArray[i].bundle_sub_days%> days each</p>
                       <h4 class="card-title truncate" title="<%=bundleArray[i].bundle_name%>"><%=bundleArray[i].bundle_name || 'Bundle'%></h4>
-                      <%var shownBundleCurrency = String(panelSetting.platform_currency || bundleArray[i].bundle_currency || '').toUpperCase();%>
-                      <div class="vmp-price tnum"><%=bundleArray[i].bundle_price ? bundleArray[i].bundle_price + ' ' + shownBundleCurrency : 'Price on request'%></div>
+                      <%var bundleCurrency = String(bundleArray[i].bundle_currency || panelSetting.platform_currency || '').toUpperCase();
+                        var bundlePayu = payuActive && bundleCurrency === "INR";
+                        var bundleRzp = razorpayActive && bundleCurrency === "INR";%>
+                      <div class="vmp-price tnum"><%=bundleArray[i].bundle_price ? bundleArray[i].bundle_price + ' ' + bundleCurrency : 'Price on request'%></div>
                       <div class="vmp-perks">
                         <%if(bundleArray[i].bundleServersData){%>
                         <% for(let j=0; j < bundleArray[i].bundleServersData.length;j++){%>
@@ -271,16 +293,21 @@ function slotId(prefix, tblOrName, i) {
                       </div>
                     </div>
                     <div class="card-footer">
+                      <%if(paypalActive){%>
                       <div class="vmp-paypal-slot" id="<%= slotId('bundlebuy', bundleArray[i].bundle_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle"></div>
-                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <%}%>
+                      <%if(bundlePayu){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle" aria-label="Buy bundle with PayU">
                         <img src="./images/payumoney.png" height="20" width="76" alt="PayU">
                       </button>
                       <%}%>
-                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <%if(bundleRzp){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(bundleArray[i].serverDataObj)) %>" data-buytype="newPurchaseBundle" aria-label="Buy bundle with Razorpay">
                         <img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay">
                       </button>
+                      <%}%>
+                      <%if(!paypalActive && !bundlePayu && !bundleRzp){%>
+                      <p class="vmp-hint" style="margin:0">No payment method is available for <%=bundleCurrency%> — please contact an admin.</p>
                       <%}%>
                     </div>
                   </div>
@@ -338,16 +365,24 @@ function slotId(prefix, tblOrName, i) {
                     <td><%- row.expireStamp ? expiryBadge(remainingDays(row.expireStamp)) : (row.type===1 ? '<span class="vmp-badge info">Permanent</span>' : '<span class="vmp-badge">NA</span>') %></td>
                     <td>
                       <% if(row.type==0 && srv){ %>
+                      <% const renewCurrency = String(srv.vip_currency || panelSetting.platform_currency || '').toUpperCase();
+                         const renewPayu = payuActive && renewCurrency === "INR";
+                         const renewRzp = razorpayActive && renewCurrency === "INR"; %>
+                      <%if(paypalActive){%>
                       <div class="vmp-paypal-slot" id="<%= slotId('renew', srv.tbl_name, j) %>" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase"></div>
-                      <%if(payuActive && panelSetting.platform_currency==="INR"){%>
+                      <%}%>
+                      <%if(renewPayu){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase" aria-label="Renew with PayU">
                         <img src="./images/payumoney.png" height="18" width="68" alt="PayU">
                       </button>
                       <%}%>
-                      <%if(razorpayActive && panelSetting.platform_currency==="INR"){%>
+                      <%if(renewRzp){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(srv)) %>" data-buytype="renewPurchase" aria-label="Renew with Razorpay">
                         <img src="./images/razorpay.svg" height="18" width="68" alt="Razorpay">
                       </button>
+                      <%}%>
+                      <%if(!paypalActive && !renewPayu && !renewRzp){%>
+                      <span class="vmp-badge">No <%=renewCurrency%> payment method</span>
                       <%}%>
                       <%}else{%>
                       <span class="vmp-badge">No renewal needed</span>
