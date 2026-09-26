@@ -985,6 +985,18 @@ async function main() {
     assert.ok(h.includes('>30 INR<'), 'quotes 30 INR, not 30 USD');
     assert.ok(!h.includes('30 USD'), 'stale USD never reaches the buyer');
   });
+  await ok('payment scripts are cache-busted', () => {
+    // These carry gateway + currency logic; an unversioned <script> lets a
+    // browser keep serving a stale copy and silently mask the fix.
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    for (const f of ['paypalPayment.js', 'payU.js', 'razorPay.js']) {
+      const m = dash.match(new RegExp(`src="\\./js/${f.replace('.', '\\.')}(\\?v=\\d+)?"`));
+      assert.ok(m, `${f} is included`);
+      assert.ok(m[1], `${f} has a cache-busting version`);
+    }
+    const css = (fs.readFileSync(path.join(__dirname, '..', 'views', 'Header.ejs'), 'utf8').match(/vmp-design-system\.css\?v=(\d+)/) || [])[1];
+    assert.ok(css && Number(css) >= 20, `design-system css version bumped (v=${css})`);
+  });
   await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
     const crypto = require('crypto');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');
