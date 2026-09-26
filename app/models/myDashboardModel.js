@@ -41,27 +41,29 @@ var myDashboardModel = {
   getUserDataFromAllServers: function (steamId) {
     return new Promise(async (resolve, reject) => {
       try {
-        let finalResult = []
-        let serverList = await panelServerModal.getPanelServersDisplayList();
+        const serverList = await panelServerModal.getPanelServersDisplayList();
 
-        // Match 64-bit and legacy STEAM_ rows alike (callers pass either form).
-        const matchIds = SteamIDConverter.quotedAuthIdVariants(steamId);
-        for (let i = 0; i < serverList.length; i++) {
-          if (!TABLE_NAME_RE.test(serverList[i].tbl_name)) continue;
-          let query = db.queryFormat(`SELECT authId,
-                                             name,
-                                             expireStamp,
-                                             created_at,
-                                             type 
-                                      FROM ${serverList[i].tbl_name} WHERE authId IN (?)`, [matchIds]);
-          let queryRes = await db.query(query);
-          if (!queryRes) {
-            return reject("No Data Found");
+        // Match every stored spelling (quoted/bare × 64-bit/legacy STEAM_).
+        const matchIds = SteamIDConverter.authIdMatchAll(steamId);
+        const valid = serverList.filter((s) => s && TABLE_NAME_RE.test(s.tbl_name));
+        // Servers are independent: query in parallel, and one bad/missing
+        // table must not nuke the whole dashboard (that surfaced as "no VIP").
+        const settled = await Promise.all(valid.map(async (s) => {
+          try {
+            const query = db.queryFormat(`SELECT authId,
+                                                 name,
+                                                 expireStamp,
+                                                 created_at,
+                                                 type
+                                          FROM ${s.tbl_name} WHERE authId IN (?)`, [matchIds]);
+            const queryRes = await db.query(query);
+            if (queryRes && queryRes.length) return { "servername": s.server_name, "data": queryRes[0] };
+          } catch (e) {
+            logger.error("error in getUserDataFromAllServers (single server)->", e);
           }
-          if (queryRes.length)
-            finalResult.push({ "servername": serverList[i].server_name, "data": queryRes[0] })
-        }
-        return resolve(finalResult);
+          return null;
+        }));
+        return resolve(settled.filter(Boolean));
       } catch (error) {
         logger.error("error in getUserDataFromAllServers->", error);
         reject(error)

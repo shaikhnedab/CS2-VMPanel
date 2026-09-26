@@ -41,14 +41,14 @@ function slotId(prefix, tblOrName, i) {
 
 <!-- crypto script needed for payu (sometimes it gives error loading this script from sdk so adding it manually) -->
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js"></script>
 
 <!-- Paypal SDK Settings start -->
 <script>
   var paypalActive = <%=paypalActive%>;
 </script>
 <%if(paypalActive){%>
-<script
+<script defer
   src="https://www.paypal.com/sdk/js?client-id=<%=paypalClientID%>&disable-funding=card&currency=<%=panelSetting.platform_currency%>"></script>
 <%}%>
 <script src="./js/paypalPayment.js"></script>
@@ -62,11 +62,11 @@ function slotId(prefix, tblOrName, i) {
 <%if(payuActive && panelSetting.platform_currency==="INR"){%>
 <%if(payuEnv=='test'){%>
 <!-- BOLT Sandbox/test //-->
-<script id="bolt" src="https://sboxcheckout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="913f9e"
+<script id="bolt" defer src="https://sboxcheckout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="913f9e"
   bolt-logo="<%= panelSetting.community_logo_url?panelSetting.community_logo_url:'./images/vmp.png'%>"></script>
 <%}else if(payuEnv=='live')%>
 <!-- BOLT Sandbox/test //-->
-<script id="bolt" src="https://checkout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="288c6c"
+<script id="bolt" defer src="https://checkout-static.citruspay.com/bolt/run/bolt.min.js" bolt-color="288c6c"
   bolt-logo="<%= panelSetting.community_logo_url?panelSetting.community_logo_url:'./images/vmp.png'%>"></script>
 <%}%>
 <!-- PayU SDK Settings end -->
@@ -76,7 +76,7 @@ function slotId(prefix, tblOrName, i) {
   var razorpayActive = <%=razorpayActive%>
 </script>
 <%if(razorpayActive && panelSetting.platform_currency === "INR"){%>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <%}%>
 
 <script>

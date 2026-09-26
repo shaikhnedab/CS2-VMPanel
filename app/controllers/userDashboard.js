@@ -65,18 +65,28 @@ const myDashboardFunc = (reqBody, reqUser) => {
   return new Promise(async (resolve, reject) => {
     try {
 
-      const steamId = SteamIDConverter.toSteamID(reqUser.id);
+      // Canonical 64-bit id for every downstream lookup. Profile extras are
+      // best-effort: a missing photos array or realname must never throw and
+      // wipe the whole dashboard (that surfaced as "you hold no VIP").
+      const steamId = SteamIDConverter.toCanonical64(reqUser.id);
+      const photoValues = Array.isArray(reqUser.photos)
+        ? reqUser.photos.map((p) => p && p.value).filter(Boolean)
+        : [];
       const userData = {
         "steamId": steamId,
-        "displayname": reqUser.displayName,
-        "realName": reqUser._json.realname,
-        "avatarUrl": reqUser.photos[2].value
+        "displayname": reqUser.displayName || steamId,
+        "realName": (reqUser._json && reqUser._json.realname) || '',
+        "avatarUrl": photoValues[2] || photoValues[0] || ''
       }
 
-      let userDataListing = await myDashboardModel.getUserDataFromAllServers('"' + steamId + '"')
-
-      let serverList = await myDashboardModel.getSaleServerListing()
-      let allServerList = await panelServerModal.getPanelServersList();
+      // The four fetches are independent — run them together instead of
+      // sequentially so one slow query doesn't stall the whole page.
+      const [userDataListing, serverList, allServerList, bundleList] = await Promise.all([
+        myDashboardModel.getUserDataFromAllServers(steamId),
+        myDashboardModel.getSaleServerListing(),
+        panelServerModal.getPanelServersList(),
+        getPanelBundlesListFunc(),
+      ]);
 
       const userServerArray = []
       // for (let j = 0; j < userDataListing.length; j++) {
@@ -100,8 +110,6 @@ const myDashboardFunc = (reqBody, reqUser) => {
 
         }
       }
-
-      let bundleList = await getPanelBundlesListFunc()
 
       const bundleArray = []
       for (let i = 0; i < bundleList.length; i++) {
@@ -198,7 +206,6 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
   return new Promise(async (resolve, reject) => {
     try {
 
-      const steamId = SteamIDConverter.toSteamID(reqUser.id);
       let userDisplayName = reqUser.displayName
       userDisplayName = cleanString(userDisplayName)
       let userRealName = reqUser._json.realname

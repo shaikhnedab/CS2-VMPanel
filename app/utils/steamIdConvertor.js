@@ -178,6 +178,18 @@ var SteamIDConverter = {
     return [`"${id64}"`, `"${this.toSteamID(id64)}"`];
   },
 
+  /**
+   * Every stored authId spelling for one player: quoted + bare × 64-bit +
+   * legacy STEAM_. The panel writes quoted 64-bit, but game plugins write
+   * bare rows and legacy rows exist in both forms — matching only quoted
+   * forms silently drops bare rows, which surfaces as "you hold no VIP".
+   */
+  authIdMatchAll: function (input) {
+    const id64 = this.toCanonical64(input);
+    const legacy = this.toSteamID(id64);
+    return [`"${id64}"`, id64, `"${legacy}"`, legacy];
+  },
+
   // ------------------------------------------------------------------------------
 
   profileURL: function (steamid64) {

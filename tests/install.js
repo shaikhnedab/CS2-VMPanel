@@ -111,6 +111,82 @@ async function main() {
       config.publicBaseUrl = saved;
     }
   });
+  await ok('authIdMatchAll covers quoted/bare x 64/legacy spellings', () => {
+    const C = require('../app/utils/steamIdConvertor');
+    assert.deepStrictEqual(C.authIdMatchAll('STEAM_1:0:65879019'), [
+      '"76561198092023766"', '76561198092023766', '"STEAM_1:0:65879019"', 'STEAM_1:0:65879019',
+    ]);
+    // quoted input, ID3, and bare account id all canonicalize to the same set
+    for (const input of ['"STEAM_1:0:65879019"', '[U:1:131758038]', '76561198092023766']) {
+      assert.deepStrictEqual(C.authIdMatchAll(input), C.authIdMatchAll('STEAM_1:0:65879019'), `same set for ${input}`);
+    }
+  });
+  await ok('dashboard lookup matches bare plugin-written rows (stubbed DB)', async () => {
+    const dbBridge = require('../app/db/db_bridge');
+    const origQuery = dbBridge.query;
+    const seen = [];
+    dbBridge.query = async (sql) => {
+      const q = String(sql);
+      seen.push(q);
+      if (/FROM tbl_servers/i.test(q)) return [{ tbl_name: 'sv_test', server_name: 'Test Server' }];
+      if (/FROM sv_test/i.test(q)) return [{ authId: '76561198092023767', name: 'Bare', expireStamp: 9999999999, created_at: new Date(), type: 0 }];
+      return [];
+    };
+    try {
+      const m = require('../app/models/myDashboardModel');
+      const r = await m.getUserDataFromAllServers('"STEAM_1:0:65879020"');
+      assert.strictEqual(r.length, 1);
+      assert.strictEqual(r[0].data.authId, '76561198092023767');
+      const asked = seen.find((q) => /FROM sv_test/i.test(q));
+      // mysql2 sends `"` as `\"` on the wire; MySQL unescapes on receipt
+      // (proven by the live-DB MATCH runs) — compare the unescaped intent.
+      const unescaped = asked.replace(/\\"/g, '"');
+      for (const v of ['"76561198092023768"', '76561198092023768', '"STEAM_1:0:65879020"', 'STEAM_1:0:65879020']) {
+        assert.ok(unescaped.includes(v), `query covers ${v}`);
+      }
+    } finally {
+      dbBridge.query = origQuery;
+    }
+  });
+  await ok('myDashboardFunc survives minimal Steam profile (no photos/_json)', async () => {
+    const dbBridge = require('../app/db/db_bridge');
+    const origQuery = dbBridge.query;
+    dbBridge.query = async () => [];
+    try {
+      const { myDashboardFunc } = require('../app/controllers/userDashboard');
+      const r = await myDashboardFunc({}, { id: '76561198092023766' });
+      assert.strictEqual(r.userData.displayname, '76561198092023766');
+      assert.strictEqual(r.userData.avatarUrl, '');
+      assert.deepStrictEqual(r.userDataListing, []);
+    } finally {
+      dbBridge.query = origQuery;
+    }
+  });
+  await ok('steam profile fetch falls back without apiKey (bounded, offline-safe)', async () => {
+    const { parseSteamId64, fetchSteamProfile, minimalProfile } = require('../app/utils/steamOpenId');
+    assert.strictEqual(parseSteamId64('https://steamcommunity.com/openid/id/76561198092023766'), '76561198092023766');
+    assert.strictEqual(parseSteamId64('https://evil.com/openid/id/1'), null);
+    assert.strictEqual(parseSteamId64(null), null);
+    assert.deepStrictEqual(minimalProfile('76561198092023766').id, '76561198092023766');
+    const t0 = Date.now();
+    const p = await fetchSteamProfile('', '76561198092023766');
+    assert.ok(Date.now() - t0 < 2000, 'no network attempted without key');
+    assert.strictEqual(p.id, '76561198092023766');
+    assert.ok(Array.isArray(p.photos));
+  });
+  await ok('steam strategy disables unbounded library profile fetch', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'utils', 'steamOpenId.js'), 'utf8');
+    assert.ok(/profile:\s*false/.test(src), 'profile:false is set');
+    assert.ok(/open_timeout|response_timeout/.test(src), 'bounded fetch configured');
+  });
+  await ok('store defers third-party SDK scripts', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    for (const host of ['cdnjs.cloudflare.com/ajax/libs/crypto-js', 'www.paypal.com/sdk/js', 'citruspay.com/bolt', 'checkout.razorpay.com']) {
+      const m = html.match(new RegExp(`<script[^>]*${host.replace(/\./g, '\\.')}[^>]*>`, 'g')) || [];
+      assert.ok(m.length > 0, `${host} present`);
+      assert.ok(m.every((t) => /\bdefer\b/.test(t)), `${host} deferred`);
+    }
+  });
   await ok('payU callbacks follow explicit base, else request host', async () => {
     const config = require('../app/config');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');

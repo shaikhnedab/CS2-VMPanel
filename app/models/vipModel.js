@@ -25,10 +25,11 @@ const panelServerModal = require("../models/panelServerModal.js");
 const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const SteamIDConverter = require("../utils/steamIdConvertor")
 
-// Quoted authId match list ([64-bit, legacy STEAM_]) for a raw or quoted id.
-// Readers match either format; writers always store the 64-bit variant.
+// authId match list for a raw or quoted id: quoted + bare × 64-bit +
+// legacy STEAM_. Writers store quoted 64-bit, but readers must match every
+// stored spelling (game plugins write bare rows).
 function authIdMatch(id) {
-  return SteamIDConverter.quotedAuthIdVariants(id);
+  return SteamIDConverter.authIdMatchAll(id);
 }
 
   /**
