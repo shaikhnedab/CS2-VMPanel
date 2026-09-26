@@ -4,7 +4,7 @@
 // otherwise derived per request (see ./publicUrl for the rationale).
 
 const SteamStrategy = require('passport-steam');
-const needle = require('needle');
+const { httpGet } = require('./httpGet');
 const { normalizePublicBaseUrl, resolveBaseUrl } = require('./publicUrl');
 
 // profile:false is deliberate: passport-steam's built-in enrichment calls
@@ -38,32 +38,28 @@ function fetchSteamProfile(apiKey, id64) {
     let settled = false;
     const finish = (profile) => { if (!settled) { settled = true; resolve(profile); } };
     if (!apiKey) return finish(minimalProfile(id64));
-    try {
-      needle.get(
-        'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/',
-        { key: apiKey, steamids: id64 },
-        { open_timeout: PROFILE_TIMEOUT_MS, read_timeout: PROFILE_TIMEOUT_MS, response_timeout: PROFILE_TIMEOUT_MS },
-        (err, res) => {
-          try {
-            const players = res && res.body && res.body.response && res.body.response.players;
-            const p = Array.isArray(players) && players[0];
-            if (err || !p || String(p.steamid) !== String(id64)) return finish(minimalProfile(id64));
-            const photos = [p.avatar, p.avatarmedium, p.avatarfull].filter(Boolean).map((value) => ({ value }));
-            return finish({
-              provider: 'steam',
-              id: String(p.steamid),
-              displayName: p.personaname || String(id64),
-              photos,
-              _json: p,
-            });
-          } catch (e) {
-            return finish(minimalProfile(id64));
-          }
+    httpGet(
+      'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/',
+      { params: { key: apiKey, steamids: id64 }, timeout: PROFILE_TIMEOUT_MS }
+    )
+      .then((res) => {
+        try {
+          const players = res && res.body && res.body.response && res.body.response.players;
+          const p = Array.isArray(players) && players[0];
+          if (!res || !res.ok || !p || String(p.steamid) !== String(id64)) return finish(minimalProfile(id64));
+          const photos = [p.avatar, p.avatarmedium, p.avatarfull].filter(Boolean).map((value) => ({ value }));
+          return finish({
+            provider: 'steam',
+            id: String(p.steamid),
+            displayName: p.personaname || String(id64),
+            photos,
+            _json: p,
+          });
+        } catch (e) {
+          return finish(minimalProfile(id64));
         }
-      );
-    } catch (e) {
-      finish(minimalProfile(id64));
-    }
+      })
+      .catch(() => finish(minimalProfile(id64)));
   });
 }
 

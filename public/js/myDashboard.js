@@ -110,6 +110,8 @@ function vmpToggleGiftUI() {
   var toggle = document.getElementById('vmpGiftToggle');
   if (wrap) wrap.style.display = (toggle && toggle.checked) ? '' : 'none';
   if (!toggle || !toggle.checked) vmpGiftInputChanged();
+  // Owned-server cards only expose their gift buttons while gifting is ON.
+  if (typeof vmpInitOwnedGiftSlots === 'function') vmpInitOwnedGiftSlots();
 }
 //-----------------------------------------------------------------------------------------------------
 

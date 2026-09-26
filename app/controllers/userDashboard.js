@@ -103,11 +103,17 @@ const myDashboardFunc = (reqBody, reqUser) => {
         }
       }
 
+      // Servers on sale. Ones the viewer already holds VIP on are kept but
+      // flagged `owned`, so the store can offer a gift path instead of
+      // hiding them (hiding them made gifting-to-others impossible on a
+      // single-server panel and looked like "no servers configured").
       const serverArray = []
       for (let i = 0; i < serverList.length; i++) {
-        if (!userServerArray.includes(serverList[i].server_name)) {
-          serverArray.push(serverList[i])
-
+        const row = serverList[i];
+        if (userServerArray.includes(row.server_name)) {
+          serverArray.push({ ...row, vmpOwned: true });
+        } else {
+          serverArray.push(row);
         }
       }
 

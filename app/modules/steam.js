@@ -18,7 +18,7 @@
 */
 
 'use strict';
-const needle = require('needle');
+const { httpGet } = require('../utils/httpGet');
 const logger = require('./logger')('Steam');
 const SteamIDConverter = require('../utils/steamIdConvertor');
 
@@ -50,13 +50,17 @@ class Steam {
     }
     let res;
     try {
-      res = await needle('get',
-        `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${encodeURIComponent(apiKey)}&vanityurl=${encodeURIComponent(vanity)}`,
-        { open_timeout: 8000, read_timeout: 8000 });
+      res = await httpGet(
+        'https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/',
+        { params: { key: apiKey, vanityurl: vanity } }
+      );
     } catch (e) {
       throw { type: 'actor', desc: 'Steam did not answer. Try again in a moment.' };
     }
-    const r = res && res.body && res.body.response;
+    if (!res || !res.ok) {
+      throw { type: 'actor', desc: 'Steam did not answer. Try again in a moment.' };
+    }
+    const r = res.body && res.body.response;
     if (!r || r.success !== 1 || !r.steamid) {
       throw { type: 'actor', desc: 'Steam could not find that profile name. Check the spelling or paste the full profile URL.' };
     }
@@ -100,13 +104,12 @@ class Steam {
             throw { type: 'actor', desc: FRIENDLY_INVALID_URL };
           }
         }
-        needle('get', finalURL, { open_timeout: 8000, read_timeout: 8000, follow_max: 2 })
-          .then(res => {
-            resolve(res.body);
+        httpGet(finalURL)
+          .then((res) => {
+            if (!res.ok) return reject(new Error(res.error || 'Steam request failed'));
+            return resolve(res.body);
           })
-          .catch(err => {
-            return reject(err);
-          });
+          .catch((err) => reject(err));
       } catch (error) {
         logger.error('error in getProfile->', error);
         reject(error);

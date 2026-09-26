@@ -203,7 +203,7 @@ return heading
                   <%if(sessionToken){%>
                   <%="Admin · "+adminName%>
                   <%}else if (sessionSteamId){%>
-                  <%=steamName%>
+                  <%=(steamName||'Steam user')%>
                   <%}else{%>
                   Guest
                   <%}%>

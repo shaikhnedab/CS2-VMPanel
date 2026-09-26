@@ -162,6 +162,104 @@ async function main() {
       dbBridge.query = origQuery;
     }
   });
+  await ok('httpGet: rejects bad input, bounds time, parses json, no needle', async () => {
+    const fsx = require('fs');
+    const pathx = require('path');
+    const { httpGet } = require('../app/utils/httpGet');
+    await assert.rejects(() => httpGet(null), TypeError);
+    await assert.rejects(() => httpGet('not-a-url'), TypeError);
+    await assert.rejects(() => httpGet('ftp://host/x'), TypeError);
+    // Local server: json + non-200 + timeout behaviour, no external network.
+    const http = require('http');
+    const srv = http.createServer((req, res) => {
+      if (req.url.startsWith('/slow')) return; // never responds
+      if (req.url.startsWith('/bad')) { res.statusCode = 500; res.end('{"e":1}'); return; }
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true, path: req.url }));
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const port = srv.address().port;
+    try {
+      const good = await httpGet(`http://127.0.0.1:${port}/p`, { params: { a: 'x y', b: 2 } });
+      assert.strictEqual(good.ok, true);
+      assert.strictEqual(good.body.ok, true);
+      assert.ok(/a=x\+y/.test(good.body.path), 'params encoded: ' + good.body.path);
+      assert.ok(/b=2/.test(good.body.path));
+      const bad = await httpGet(`http://127.0.0.1:${port}/bad`);
+      assert.strictEqual(bad.ok, false);
+      assert.strictEqual(bad.statusCode, 500);
+      const t0 = Date.now();
+      const slow = await httpGet(`http://127.0.0.1:${port}/slow`, { timeout: 400 });
+      assert.strictEqual(slow.ok, false);
+      assert.ok(/timed out/i.test(slow.error || ''), 'timeout reported: ' + slow.error);
+      assert.ok(Date.now() - t0 < 3000, 'timeout honoured');
+    } finally {
+      await new Promise((r) => srv.close(r));
+    }
+    // Regression guard: no steam call site may use needle's params-object form.
+    for (const rel of ['app/modules/steam.js', 'app/utils/steamOpenId.js']) {
+      const src = fsx.readFileSync(pathx.join(__dirname, '..', rel), 'utf8');
+      assert.ok(!/require\(['"]needle['"]\)/.test(src), `${rel} no longer imports needle`);
+    }
+  });
+  await ok('real steam API reachable via httpGet (name resolves, no crash)', async () => {
+    const { httpGet } = require('../app/utils/httpGet');
+    const res = await httpGet('https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/', {
+      params: { key: 'C32B5A70B2A13049D5E6938AC8B956ED', steamids: '76561198092023766' },
+      timeout: 8000,
+    });
+    assert.ok(res.ok, 'steam api reachable: ' + (res.error || res.statusCode));
+    const p = res.body && res.body.response && res.body.response.players[0];
+    assert.ok(p && p.personaname, 'personaname present -> nav shows a name, not the id');
+  });
+  await ok('owned servers keep a gift path instead of vanishing', async () => {
+    const dbBridge = require('../app/db/db_bridge');
+    const origQuery = dbBridge.query;
+    dbBridge.query = async (sql) => {
+      const q = String(sql).replace(/\s+/g, ' ');
+      // singleRecord=true returns one row, not an array
+      if (/COUNT\(authId\)/i.test(q)) return { usercount: '1' };
+      if (/FROM `?tbl_servers`?/i.test(q)) return [{ tbl_name: 'sv_t', server_name: 'Mine', server_ip: '', server_port: '', vip_slots: 10, vip_price: 30, vip_currency: 'USD', vip_days: 30 }];
+      if (/FROM `?sv_t`?\b/i.test(q)) return [{ authId: '76561198092023766', name: 'Me', expireStamp: 1792079631, created_at: new Date(), type: 0 }];
+      return [];
+    };
+    try {
+      const { myDashboardFunc } = require('../app/controllers/userDashboard');
+      const r = await myDashboardFunc({}, { id: '76561198092023766', displayName: 'Me' });
+      assert.strictEqual(r.serverArray.length, 1, 'owned server still listed');
+      assert.strictEqual(r.serverArray[0].vmpOwned, true, 'flagged as owned');
+    } finally {
+      dbBridge.query = origQuery;
+    }
+  });
+  await ok('store: owned cards offer gift, unowned offer buy', () => {
+    const ejsMod = require('ejs');
+    // Drop the Header/Footer partials and render without a filename: partial
+    // includes resolve relative to the template filename, and ejs keys its
+    // compile cache by filename+source, so an earlier render elsewhere in this
+    // suite could otherwise hand back a stale compiled view.
+    const source = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8')
+      .replace(/<%-\s*include\('(?:Header|Footer)\.ejs'\)\s*%>/g, '');
+    const render = (owned) => ejsMod.render(source, {
+      panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: 'USD', community_logo_url: '' },
+      currentURL: '/mydashboard', csrfToken: 'x', sessionToken: null, adminType: 0,
+      sessionSteamId: '76561198092023766', adminName: null, steamName: 'Me',
+      userData: { steamId: '76561198092023766', displayname: 'Me', realName: '', avatarUrl: '' },
+      userDataListing: [{ servername: 'Mine', data: { authId: '76561198092023766', name: 'Me', expireStamp: 1792079631, type: 0 }, serverdata: { tbl_name: 'sv_t' } }],
+      serverArray: [{ tbl_name: 'sv_t', server_name: 'Mine', vip_price: 30, vip_currency: 'USD', vip_days: 30, vmpOwned: owned }],
+      bundleArray: [], paypalActive: true, paypalClientID: 'test-client-id', payuActive: false, payuEnv: 'test',
+      razorpayActive: false, giftingActive: true, colSpan: '12',
+    });
+    const ownedHtml = render(true);
+    assert.ok(ownedHtml.includes('data-buytype="giftPurchase"'), 'owned -> gift path');
+    assert.ok(!ownedHtml.includes('data-buytype="newPurchase"'), 'owned -> no buy path');
+    assert.ok(render(false).includes('data-buytype="newPurchase"'), 'unowned -> buy path');
+    assert.ok(ownedHtml.includes('You already hold VIP here'), 'owned card explains itself');
+  });
+  await ok('header falls back to a label, never a blank steam name', () => {
+    const hdr = fs.readFileSync(path.join(__dirname, '..', 'views', 'Header.ejs'), 'utf8');
+    assert.ok(/steamName\|\|'Steam user'/.test(hdr), 'steam name fallback present');
+  });
   await ok('steam profile fetch falls back without apiKey (bounded, offline-safe)', async () => {
     const { parseSteamId64, fetchSteamProfile, minimalProfile } = require('../app/utils/steamOpenId');
     assert.strictEqual(parseSteamId64('https://steamcommunity.com/openid/id/76561198092023766'), '76561198092023766');
@@ -177,7 +275,10 @@ async function main() {
   await ok('steam strategy disables unbounded library profile fetch', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'utils', 'steamOpenId.js'), 'utf8');
     assert.ok(/profile:\s*false/.test(src), 'profile:false is set');
-    assert.ok(/open_timeout|response_timeout/.test(src), 'bounded fetch configured');
+    assert.ok(/require\('\.\/httpGet'\)/.test(src), 'uses the bounded httpGet helper');
+    assert.ok(/timeout:\s*PROFILE_TIMEOUT_MS/.test(src), 'profile fetch timeout forwarded');
+    const m = src.match(/PROFILE_TIMEOUT_MS\s*=\s*(\d+)/);
+    assert.ok(m && Number(m[1]) > 0 && Number(m[1]) <= 30000, `timeout bounded: ${m && m[1]}ms`);
   });
   await ok('store defers third-party SDK scripts', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
@@ -737,8 +838,12 @@ async function main() {
       config.reload();
     }
   });
-  await ok('store shows gift card only when gifting enabled', () => {    const ejs = require('ejs');
-    const src = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+  await ok('store shows gift card only when gifting enabled', () => {
+    const ejsMod = require('ejs');
+    // Hermetic like the other view test: no filename (so ejs never consults
+    // its cross-test compile cache) and no partial includes.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8')
+      .replace(/<%-\s*include\('(?:Header|Footer)\.ejs'\)\s*%>/g, '');
     const locals = {
       panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: 'INR', community_logo_url: '' },
       currentURL: '/mydashboard', csrfToken: 't', sessionToken: null, adminType: 0,
@@ -747,8 +852,7 @@ async function main() {
       razorpayActive: false, colSpan: '12', serverArray: [], bundleArray: [],
       userDataListing: [], userData: { displayname: 'T' },
     };
-    const render = (giftingActive) => ejs.render(src, { ...locals, giftingActive },
-      { filename: path.join(__dirname, '..', 'views', 'UserDashboard.ejs') });
+    const render = (giftingActive) => ejsMod.render(src, { ...locals, giftingActive });
     assert.ok(render(true).includes('vmpGiftToggle'), 'gift toggle shown when enabled');
     assert.ok(!render(false).includes('vmpGiftToggle'), 'gift toggle hidden when disabled');
     assert.ok(render(undefined).includes('vmpGiftToggle'), 'gift toggle shown when flag absent (legacy)');

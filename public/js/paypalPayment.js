@@ -28,8 +28,23 @@ function vmpInitPayPalSlot(el) {
   } catch (e) { /* leave slot empty; setPayPalButton handles messaging */ }
 }
 
+// Owned-server gift slots: only render once the gift switch is ON and a
+// receiver is verified, so a buyer never pays for their own duplicate row.
+function vmpInitOwnedGiftSlots() {
+  var on = !!(document.getElementById('vmpGiftToggle') || {}).checked;
+  document.querySelectorAll('[data-giftrequired="1"]').forEach(function (el) {
+    if (el.classList.contains('vmp-paypal-slot')) {
+      el.innerHTML = '';
+      if (on) vmpInitPayPalSlot(el);
+      return;
+    }
+    el.style.display = on ? '' : 'none';
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.vmp-paypal-slot').forEach(vmpInitPayPalSlot);
+  vmpInitOwnedGiftSlots();
 });
 
 //-----------------------------------------------------------------------------------------------------
