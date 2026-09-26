@@ -53,7 +53,11 @@ document.addEventListener('DOMContentLoaded', function () {
 function setPayPalButton(id, serverData, type) {
 
   let server = serverData.server_name ? serverData.server_name : ''
-  let currency = serverData.vip_currency ? serverData.vip_currency : ''
+  // Charge the panel currency, not the row's possibly-stale vip_currency, so the
+  // amount the buyer approves matches the amount the INR gateways take.
+  let currency = (typeof window.vmpProductCurrency === 'function')
+    ? window.vmpProductCurrency(serverData)
+    : (serverData.vip_currency ? serverData.vip_currency : '')
   let price = serverData.vip_price ? serverData.vip_price : ''
   let subDays = serverData.vip_days ? serverData.vip_days : ''
 

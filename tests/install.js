@@ -939,6 +939,52 @@ async function main() {
     const v = (hdr.match(/vmp-design-system\.css\?v=(\d+)/) || [])[1];
     assert.ok(v && Number(v) >= 20, `css cache-buster bumped (v=${v})`);
   });
+  await ok('charge currency is the panel currency, not the stale row value', async () => {
+    const { resolvePlatformCurrency, normalizeCurrency, isInrOnlyGateway } = require('../app/utils/currency');
+    // The reported bug: panel INR, server row still "USD" -> must charge INR.
+    assert.strictEqual(await resolvePlatformCurrency({ vip_currency: 'USD' }, 'INR'), 'INR');
+    assert.strictEqual(await resolvePlatformCurrency({ vip_currency: 'USD' }, 'inr'), 'INR');
+    assert.strictEqual(await resolvePlatformCurrency({}, 'usd'), 'USD');
+    // Fall back to the row only when the panel never set one.
+    assert.strictEqual(await resolvePlatformCurrency({ vip_currency: 'EUR' }, ''), 'EUR');
+    assert.strictEqual(await resolvePlatformCurrency({}, ''), 'USD');
+    assert.strictEqual(normalizeCurrency(' inr '), 'INR');
+    for (const junk of [null, undefined, '', 'IN', 'INRXX', '₹', 42, {}]) {
+      assert.strictEqual(normalizeCurrency(junk), null, `rejects ${JSON.stringify(junk)}`);
+    }
+    assert.ok(isInrOnlyGateway('razorpay') && isInrOnlyGateway('PAYU'));
+    assert.ok(!isInrOnlyGateway('paypal'));
+
+    // Razorpay is India-only: it must never read the row's currency.
+    const rz = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'razorPay.js'), 'utf8');
+    assert.ok(/const currency = await resolvePlatformCurrency/.test(rz), 'razorpay resolves the platform currency');
+    assert.ok(/rzpOrderOptions = \{[\s\S]{0,200}?\bcurrency,/.test(rz), 'razorpay order carries the resolved currency');
+    assert.ok(!/vip_price, vip_currency/.test(rz), 'razorpay no longer destructures vip_currency');
+    assert.ok(!/currency:\s*vip_currency/.test(rz), 'razorpay never sends the row currency');
+
+    // PayPal charges the panel currency too, so all gateways agree.
+    const pp = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'paypalPayment.js'), 'utf8');
+    assert.ok(/vmpProductCurrency\(serverData\)/.test(pp), 'paypal uses the panel currency');
+
+    // Storefront must quote the currency that will be charged.
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    assert.ok(/panelSetting\.platform_currency \|\| serverArray\[i\]\.vip_currency/.test(dash), 'store quotes panel currency');
+    const ejsMod2 = require('ejs');
+    const src = dash.replace(/<%-\s*include\('(?:Header|Footer)\.ejs'\)\s*%>/g, '');
+    const h = ejsMod2.render(src, {
+      panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: 'INR', community_logo_url: '' },
+      currentURL: '/mydashboard', csrfToken: 'x', sessionToken: null, adminType: 0,
+      sessionSteamId: '76561198092023766', adminName: null, steamName: 'Me',
+      userData: { steamId: '76561198092023766', displayname: 'Me', realName: '', avatarUrl: '' },
+      userDataListing: [{ servername: 'Mine', data: { authId: '76561198092023766', name: 'Me', expireStamp: 1792079631, type: 0 }, serverdata: { tbl_name: 'sv_t' } }],
+      // deliberately stale row currency, as on the live panel
+      serverArray: [{ tbl_name: 'sv_t', server_name: 'Mine', vip_price: 30, vip_currency: 'USD', vip_days: 30 }],
+      bundleArray: [], payuEnv: 'test', payuMerchantId: 'x', colSpan: '12',
+      paypalActive: false, paypalClientID: '', payuActive: true, razorpayActive: false, giftingActive: true,
+    });
+    assert.ok(h.includes('>30 INR<'), 'quotes 30 INR, not 30 USD');
+    assert.ok(!h.includes('30 USD'), 'stale USD never reaches the buyer');
+  });
   await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
     const crypto = require('crypto');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');

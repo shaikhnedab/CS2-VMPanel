@@ -24,6 +24,7 @@ const config = require("../config");
 const RazorPay = require("razorpay");
 const { getUUID } = require("../utils/crypto");
 const razorpayConfig = config.payment_gateways.razorPay;
+const { resolvePlatformCurrency } = require("../utils/currency");
 
 exports.initRazorpayPayment = async (req, res) => {
   try {
@@ -56,12 +57,17 @@ const initRazorpayPaymentFunc = async (reqBody, reqUser) => {
 };
 
 const createRzpOrder = async (reqBody, steamId) => {
-  const { server_name, vip_price, vip_currency, vip_days } = reqBody.serverData;
+  const { server_name, vip_price, vip_days } = reqBody.serverData;
   const productInfo = `${vip_days} days VIP for ${server_name} ${purchaseType(reqBody.type)}`;
+
+  // Razorpay is India-only: it accepts INR and nothing else. Never trust the
+  // per-server vip_currency for the charge (a row still carrying "USD" made
+  // Razorpay reject the order outright), and never trust the client either.
+  const currency = await resolvePlatformCurrency(reqBody.serverData);
 
   const rzpOrderOptions = {
     amount: vip_price * 100, // Convert price to smallest subunit (50 rupees -> 5000 paise).,
-    currency: vip_currency,
+    currency,
     receipt: createReceiptNumber(),
     notes: { steamId, productInfo }
   };

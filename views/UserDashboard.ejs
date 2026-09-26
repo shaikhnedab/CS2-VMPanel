@@ -46,6 +46,13 @@ function slotId(prefix, tblOrName, i) {
 <!-- Paypal SDK Settings start -->
 <script>
   var paypalActive = <%=paypalActive%>;
+  // The panel currency is what every gateway actually charges. A server row's
+  // own vip_currency can be stale (legacy rows still carry the old "USD"
+  // default), which would quote a price the INR-only gateways never take.
+  window.vmpPlatformCurrency = "<%=panelSetting.platform_currency%>";
+  window.vmpProductCurrency = function (serverData) {
+    return (window.vmpPlatformCurrency || (serverData && serverData.vip_currency) || '').toUpperCase();
+  };
 </script>
 <%if(paypalActive){%>
 <script defer
@@ -172,7 +179,10 @@ function slotId(prefix, tblOrName, i) {
                         <%}%>
                       </p>
                       <h4 class="card-title truncate" title="<%=serverArray[i].server_name%>"><%=serverArray[i].server_name || 'Unnamed server'%></h4>
-                      <div class="vmp-price tnum"><%=serverArray[i].vip_price ? serverArray[i].vip_price + ' ' + serverArray[i].vip_currency : 'Price on request'%></div>
+                      <%# Show the currency that will actually be charged. A row's
+                          own vip_currency can be a stale legacy value. %>
+                      <%var shownCurrency = String(panelSetting.platform_currency || serverArray[i].vip_currency || '').toUpperCase();%>
+                      <div class="vmp-price tnum"><%=serverArray[i].vip_price ? serverArray[i].vip_price + ' ' + shownCurrency : 'Price on request'%></div>
                       <div class="vmp-perks">
                         <%if(serverArray[i].server_ip && serverArray[i].server_port){%>
                         <a class="vmp-badge ok" href="<%='steam://connect/'+serverArray[i].server_ip+':'+serverArray[i].server_port%>"><span class="vmp-dot pulse" aria-hidden="true"></span>Join server</a>
@@ -250,7 +260,8 @@ function slotId(prefix, tblOrName, i) {
                     <div class="card-body">
                       <p class="eyebrow">Bundle · <%=bundleArray[i].bundle_sub_days%> days each</p>
                       <h4 class="card-title truncate" title="<%=bundleArray[i].bundle_name%>"><%=bundleArray[i].bundle_name || 'Bundle'%></h4>
-                      <div class="vmp-price tnum"><%=bundleArray[i].bundle_price ? bundleArray[i].bundle_price + ' ' + bundleArray[i].bundle_currency : 'Price on request'%></div>
+                      <%var shownBundleCurrency = String(panelSetting.platform_currency || bundleArray[i].bundle_currency || '').toUpperCase();%>
+                      <div class="vmp-price tnum"><%=bundleArray[i].bundle_price ? bundleArray[i].bundle_price + ' ' + shownBundleCurrency : 'Price on request'%></div>
                       <div class="vmp-perks">
                         <%if(bundleArray[i].bundleServersData){%>
                         <% for(let j=0; j < bundleArray[i].bundleServersData.length;j++){%>

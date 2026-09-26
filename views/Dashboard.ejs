@@ -129,7 +129,7 @@ function expiryBadge(days){
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-            <span class="vmp-badge violet"><%= serverData[i].vip_price ? serverData[i].vip_price + ' ' + serverData[i].vip_currency : 'NA' %></span>
+            <span class="vmp-badge violet"><% var shownCurrency = String(panelSetting.platform_currency || serverData[i].vip_currency || '').toUpperCase(); %><%= serverData[i].vip_price ? serverData[i].vip_price + ' ' + shownCurrency : 'NA' %></span>
             <span class="vmp-badge info"><%= serverData[i].vip_days ? serverData[i].vip_days + ' days' : '' %></span>
           </div>
           <a class="btn btn-success btn-block" href="<%='steam://connect/'+serverData[i].server_ip+':'+serverData[i].server_port%>">
