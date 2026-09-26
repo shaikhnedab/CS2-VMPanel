@@ -38,7 +38,7 @@
 
 const crypto = require('crypto');
 const { httpGet, httpPostForm, httpPostJson } = require('../utils/httpGet');
-const { toMinorUnits, fromMinorUnits, minorUnitExponent, normalizeCurrency, resolveRowCurrency } = require('../utils/currency');
+const { toMinorUnits, fromMinorUnits, minorUnitExponent, normalizeCurrency } = require('../utils/currency');
 const logger = require('./logger')('PaymentVerify');
 
 const TIMEOUT_MS = 10000;

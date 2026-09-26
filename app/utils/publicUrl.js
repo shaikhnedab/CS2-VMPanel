@@ -22,7 +22,7 @@ function normalizePublicBaseUrl(value) {
     u = new URL(s);
   } catch (e) { return null; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-  if (!u.hostname || /[\s<>\"']/.test(u.hostname)) return null;
+  if (!u.hostname || /[\s<>"']/.test(u.hostname)) return null;
   if (u.pathname && u.pathname !== '/') return null;
   if (u.search || u.hash || u.username || u.password) return null;
   const port = u.port ? `:${u.port}` : '';

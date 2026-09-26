@@ -83,7 +83,11 @@ const myDashboardFunc = (reqBody, reqUser) => {
       const [userDataListing, serverList, allServerList, bundleList] = await Promise.all([
         myDashboardModel.getUserDataFromAllServers(steamId),
         myDashboardModel.getSaleServerListing(),
-        panelServerModal.getPanelServersList(),
+        // NOT getPanelServersList(): that is SELECT *, so the row carried
+        // server_rcon_pass and the whole thing was embedded into the buyer's
+        // /mydashboard HTML (the renew buttons serialise `serverdata`). The
+        // sale projection deliberately omits the RCON secret.
+        panelServerModal.getPanelServersSaleListing(),
         getPanelBundlesListFunc(),
       ]);
 
@@ -129,6 +133,11 @@ const myDashboardFunc = (reqBody, reqUser) => {
           "server_ip": "-",
           "server_port": "-",
           "server_name": bundleList[i].bundle_name,
+          // Explicit bundle key: settlement resolves the bundle by name to get
+          // our own price/currency, and it used to look for `bundle_name` here,
+          // which was never sent - so every bundle payment was captured and then
+          // refused with "Invalid bundle selection".
+          "bundle_name": bundleList[i].bundle_name,
           "vip_price": bundleList[i].bundle_price,
           "vip_currency": bundleList[i].bundle_currency,
           "vip_days": bundleList[i].bundle_sub_days,
@@ -240,8 +249,13 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       const finalUserName = userRealName + " - (" + (userDisplayName ? userDisplayName : "-_-") + ")"
       const saleType = (reqBody.buyType === 'newPurchase' || reqBody.buyType === "newPurchaseBundle") ? 1 : reqBody.buyType === 'renewPurchase' ? 2 : 0
       const serverTable = reqBody.serverData.tbl_name
-      const flag = reqBody.serverData.vip_flag
-      const subDays = (reqBody.serverData.vip_days / 1)
+      // NEVER take the SourceMod flag from the request. vip_flag is the
+      // admin/immunity assignment the game server reads, so a crafted
+      // vip_flag would let any buyer grant themselves an admin group for the
+      // purchased period. It is resolved from our own row further down.
+      let flag = null
+      const subDaysFromRow = (row) => (row && Number(row.vip_days)) || Number(reqBody.serverData.vip_days || 0)
+      let subDays = (reqBody.serverData.vip_days / 1)
       const paymentData = reqBody.paymentData
 
       // ---- Server-side quote validation (never trust client price/table/flag) ----
@@ -249,16 +263,22 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       const quotedCurrency = paymentData && (paymentData.amount_currency ?? (paymentData.purchase_units && paymentData.purchase_units[0] && paymentData.purchase_units[0].amount && paymentData.purchase_units[0].amount.currency_code));
       const quotedOrderId = paymentData && (paymentData.order_id ?? paymentData.id);
       if (!quotedOrderId) return reject("Order Id Missing");
-      if (await salesModal.orderExists(quotedOrderId)) return reject("Duplicate payment: this order was already processed");
       const payStatus = String(paymentData && paymentData.status || '').toUpperCase();
       if (payStatus && !['COMPLETED', 'SUCCESS', 'CAPTURED', 'PAID'].includes(payStatus)) return reject("Payment not completed");
       // The amount/currency the browser reported are advisory only; they are
       // compared against the gateway's own numbers during verification below.
+      // The duplicate check is deliberately NOT done on the browser's order id
+      // here: it need not match the id the gateway actually confirms, so it was
+      // both useless and bypassable. It runs once, on the verified id, below.
 
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'renewPurchase' || reqBody.buyType === 'giftPurchase') {
         const tbls = String(serverTable || '').split(',').map((s) => s.trim()).filter(Boolean);
         if (!tbls.length) return reject("Invalid server selection");
-        // Resolve each tbl_name from DB and enforce price/currency/days/flag match.
+        // A non-bundle purchase covers exactly one server. Without this, a
+        // crafted tbl_name of "sv_a,sv_b" buys two servers for one price
+        // whenever they share a price and duration.
+        if (tbls.length > 1) return reject("Invalid server selection");
+        // Resolve each tbl_name from DB and enforce price/currency/days match.
         // giftPurchase belongs here too: it grants a VIP just like a purchase,
         // so it must not be able to skip the price/currency binding.
         for (const t of tbls) {
@@ -273,6 +293,8 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           if (!gatewaySupportsCurrency(reqBody.gateway, srv.vip_currency)) {
             return reject(unsupportedCurrencyMessage(reqBody.gateway, srv.vip_currency));
           }
+          flag = srv.vip_flag;         // ours, not the browser's
+          subDays = subDaysFromRow(srv)
         }
       }
       // Bundles are validated per-server inside the newPurchaseBundle branch via checkVipExists;
@@ -293,10 +315,16 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         expected = { amount: Number(srv.vip_price), currency: srv.vip_currency };
       } else if (reqBody.buyType === 'newPurchaseBundle') {
         const bundles = await getPanelBundlesListFunc();
-        const chosen = (bundles || []).find((b) => b.bundle_name === (reqBody.serverData || {}).bundle_name);
+        // The client sends `bundle_name`; older payloads only carried the name in
+        // server_name, so accept either rather than refusing a paid bundle.
+        const wanted = String((reqBody.serverData || {}).bundle_name || (reqBody.serverData || {}).server_name || '');
+        const chosen = (bundles || []).find((b) => String(b.bundle_name) === wanted);
         if (!chosen) return reject("Invalid bundle selection");
-        if (Number(chosen.bundle_price) !== Number(reqBody.serverData.bundle_price)) return reject("Price mismatch, please retry");
+        if (Number(chosen.bundle_price) !== Number(reqBody.serverData.vip_price)) return reject("Price mismatch, please retry");
+        if (String(chosen.bundle_currency) !== String(reqBody.serverData.vip_currency)) return reject("Currency mismatch");
         expected = { amount: Number(chosen.bundle_price), currency: chosen.bundle_currency };
+        flag = chosen.bundle_flags;      // ours, not the browser's
+        subDays = subDaysFromRow({ vip_days: chosen.bundle_sub_days });
       }
       if (config.verify_payments !== false) {
         if (!expected) return reject("Could not determine what was purchased");
@@ -306,15 +334,23 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           logger.error(`payment verification failed (${reqBody.gateway}) for order ${quotedOrderId}: ${verdict.reason}`);
           return reject(verdict.reason);
         }
-        // Bind the duplicate check to the gateway's own reference, so a
-        // replayed or colliding id cannot slip through.
-        if (verdict.orderId && await salesModal.orderExists(`${reqBody.gateway}:${verdict.orderId}`)) {
-          return reject("Duplicate payment: this order was already processed");
+        // Replay protection runs exactly once, on the id the GATEWAY confirmed.
+        // It used to check "gateway:id" while the sales row stored the bare id,
+        // so it could never match, and the browser's own order id was checked
+        // earlier - which need not be the verified one, making both bypassable.
+        // We store this same composite key, so the check and the stored value
+        // can never drift apart again.
+        if (verdict.orderId) {
+          reqBody.verifiedOrderKey = `${reqBody.gateway}:${verdict.orderId}`;
+          if (await salesModal.orderExists(reqBody.verifiedOrderKey)) {
+            return reject("Duplicate payment: this order was already processed");
+          }
         }
         reqBody.verifiedPayment = verdict;
       } else {
         logger.warn(`VERIFY_PAYMENTS is disabled - trusting the browser's claim for gateway ${reqBody.gateway}. Anyone can forge a payment.`);
       }
+      if (!flag) return reject("Could not determine the server flag for this purchase");
 
       // ---- VIP gifting: optional recipient SteamID (else buyer). Never trust client payer. ----
       const isGift = reqBody.isGift === true || reqBody.isGift === 'true' || reqBody.buyType === 'giftPurchase';
@@ -358,7 +394,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         || src.productinfo || paymentData.product_desc || null;
 
       const paymentInsertObj = {
-        order_id: v ? v.orderId : quotedOrderId,
+        // The same composite key the duplicate check used, so the stored value
+        // and the value we check can never diverge.
+        order_id: reqBody.verifiedOrderKey || quotedOrderId,
         payer_id: v ? v.gatewayRef : (paymentData && (paymentData.payer_id || paymentData.payer)) || null,
         payer_steamid: buyerId64,
         recipient_steamid: isGift ? recipientSteamId64 : null,
@@ -373,7 +411,40 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         sale_type: effectiveSaleType
       }
 
-      await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
+      // ---- Pre-grant validation, BEFORE the sale row is written ----
+      // These used to run after the insert, so a refusal (receiver already has
+      // VIP, bundle mismatch) left a sale row with no VIP granted AND made every
+      // retry fail as a duplicate: money captured, nothing delivered, unrecoverable.
+      const singleServerTables = String(serverTable || '').split(',').map((s) => s.trim()).filter(Boolean)
+      if (reqBody.buyType === 'giftPurchase') {
+        for (const t of singleServerTables) {
+          // Do NOT swallow a DB error: a swallowed failure reads as 'no existing
+          // VIP' and lets a duplicate row through.
+          const exists = await vipModel.checkVipExists({ server: t, steamId: vipTarget })
+          if (exists && exists.name) return reject("Recipient already has VIP on one of these servers");
+        }
+      } else if (reqBody.buyType === 'newPurchase') {
+        // A plain purchase must not add a second row for someone who already
+        // holds VIP; the UI only offers Renew, so enforce it here too.
+        for (const t of singleServerTables) {
+          const exists = await vipModel.checkVipExists({ server: t, steamId: vipTarget })
+          if (exists && exists.name) return reject("You already hold VIP on this server - use Renew instead");
+        }
+      } else if (reqBody.buyType === 'renewPurchase') {
+        const exists = await vipModel.checkVipExists({ server: singleServerTables[0], steamId: vipTarget })
+        if (!exists || !exists.name) return reject("No VIP found to renew on this server");
+      } else if (reqBody.buyType === 'newPurchaseBundle') {
+        const bundleSets = await getPanelBundlesListFunc().catch(() => [])
+        const tblSet = singleServerTables.slice().sort().join(',')
+        const match = (bundleSets || []).find((b) => ((b.bundleServersData || []).map((s) => s.tbl_name).sort().join(',')) === tblSet
+          && Number(b.bundle_price) === Number(reqBody.serverData.vip_price)
+          && String(b.bundle_currency) === String(reqBody.serverData.vip_currency)
+          && Number(b.bundle_sub_days) === Number(reqBody.serverData.vip_days));
+        if (!match) return reject("Bundle price mismatch, please retry");
+        reqBody.bundleServerArray = singleServerTables;
+      }
+
+      // Only now is the order consumed.      await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
 
       // Gift target (quoted canonical SteamID); self-purchase uses buyer.
       // Quoted canonical 64-bit target for sv_ rows (buyer or gift recipient).
@@ -382,14 +453,8 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
 
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'giftPurchase') {
 
-        // For gifts, refuse if recipient already has an active VIP (require explicit extend later).
-        if (isGift) {
-          for (const t of serverTable.split(',')) {
-            const exists = await vipModel.checkVipExists({ server: t, steamId: vipTarget }).catch(() => null);
-            if (exists && exists.name) return reject("Recipient already has VIP on one of these servers");
-          }
-        }
-
+        // (recipient-already-has-VIP is checked above, before the sale row, so a
+        //  refusal cannot burn the order id and block a legitimate retry)
         const newVipInsertObj = {
           day: epochTillExpiry(subDays),
           name: vipName,
@@ -425,19 +490,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         }
       } else if (reqBody.buyType === 'newPurchaseBundle') {
 
-        // Validate bundle quote against DB (match by server set + price/currency/days).
-        const bundles = await getPanelBundlesListFunc().catch(() => []);
-        const tblSet = String(serverTable || '').split(',').map((s) => s.trim()).filter(Boolean).sort().join(',');
-        const match = (bundles || []).find((b) => {
-          const set = ((b.bundleServersData || []).map((s) => s.tbl_name).sort().join(','));
-          return set === tblSet
-            && Number(b.bundle_price) === Number(reqBody.serverData.vip_price)
-            && String(b.bundle_currency) === String(reqBody.serverData.vip_currency)
-            && Number(b.bundle_sub_days) === Number(reqBody.serverData.vip_days);
-        });
-        if (!match) return reject("Bundle price mismatch, please retry");
-
-        const bundleServerArray = serverTable.split(',')
+        // The bundle quote was already validated against the DB above, before
+        // the sale row was written.
+        const bundleServerArray = reqBody.bundleServerArray
 
         for (let i = 0; i < bundleServerArray.length; i++) {
 

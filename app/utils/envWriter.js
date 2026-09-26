@@ -2,7 +2,6 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const logger = require('../modules/logger')('EnvWriter');

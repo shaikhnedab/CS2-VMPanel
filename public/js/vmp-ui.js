@@ -403,3 +403,17 @@
     }
   });
 })();
+
+/* ---------- shared escaping helper ----------
+ * HTML-escapes a value for safe interpolation into innerHTML. Several table
+ * renderers build rows with template literals, so every field taken from the
+ * server (server names, bundle names, Discord names, descriptions) MUST go
+ * through this. Escaping only helps in HTML context - never interpolate
+ * untrusted data into an inline onclick="..." handler; use data-* attributes
+ * with a delegated listener instead.
+ */
+window.escHtml = window.escHtml || function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  });
+};

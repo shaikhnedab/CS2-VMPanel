@@ -25,6 +25,15 @@
 // back to its first option (USD) instead of the panel default, so restore it.
 //-----------------------------------------------------------------------------------------------------
 
+// escHtml is provided by vmp-ui.js (loaded first via Footer.ejs); the local
+// fallback keeps this file safe if it is ever loaded on its own. Every field
+// that comes from the server MUST go through this before landing in innerHTML.
+var escHtml = window.escHtml || function (s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+  });
+};
+
 function vmpResetCurrencyDefault(selector) {
   const el = $(selector);
   const def = String((window.vmpPlatformCurrency || '')).toUpperCase();
@@ -295,23 +304,23 @@ function fetchPServerListajax() {
 
         for (let i = 0; i < dataArray.length; i++) {
           htmlString += `<tr>
-                        <td>${dataArray[i].server_name ? dataArray[i].server_name : 'NA'}</td>
-                        <td>${dataArray[i].tbl_name ? dataArray[i].tbl_name : 'NA'}</td>
-                        <td>${dataArray[i].server_ip ? dataArray[i].server_ip : 'NA'}</td>
-                        <td>${dataArray[i].server_port ? dataArray[i].server_port : 'NA'}</td>
-                        <td>${dataArray[i].server_rcon_pass ? dataArray[i].server_rcon_pass : 'NA'}</td>
-                        <td>${dataArray[i].vip_slots ? dataArray[i].vip_slots : 'NA'}</td>
-                        <td>${dataArray[i].vip_price ? dataArray[i].vip_price + " " + dataArray[i].vip_currency : 'NA'}</td>
-                        <td>${dataArray[i].vip_flag ? dataArray[i].vip_flag : 'NA'}</td>
-                        <td>${dataArray[i].created_at ? dateFormatter(dataArray[i].created_at) : 'NA'}</td>
-                        <td>${(curentAdminType === 1) ? `<button class="btn btn-danger" onclick="deletePServerajax('${dataArray[i].id}','${dataArray[i].tbl_name}')"><i class="material-icons" >delete_forever</i></button>` : ''}</td>
+                        <td>${escHtml(dataArray[i].server_name || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].tbl_name || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].server_ip || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].server_port || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].server_rcon_pass || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].vip_slots || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].vip_price ? dataArray[i].vip_price + " " + dataArray[i].vip_currency : 'NA')}</td>
+                        <td>${escHtml(dataArray[i].vip_flag || 'NA')}</td>
+                        <td>${escHtml(dataArray[i].created_at ? dateFormatter(dataArray[i].created_at) : 'NA')}</td>
+                        <td>${(curentAdminType === 1) ? `<button class="btn btn-danger" data-del-server="1" data-id="${escHtml(dataArray[i].id)}" data-tbl="${escHtml(dataArray[i].tbl_name)}"><i class="material-icons" >delete_forever</i></button>` : ''}</td>
                         </tr>`
 
           htmlString2 += ` <div class="col-md-3">
                             <div class="form-check">
                               <label class="form-check-label">
-                                <input class="form-check-input" type="checkbox" name="bundle_server_add" value="${dataArray[i].tbl_name + ":" + dataArray[i].id}">
-                                ${dataArray[i].server_name}
+                                <input class="form-check-input" type="checkbox" name="bundle_server_add" value="${escHtml(dataArray[i].tbl_name + ":" + dataArray[i].id)}">
+                                ${escHtml(dataArray[i].server_name)}
                                 <span class="form-check-sign">
                                   <span class="check"></span>
                                 </span>
@@ -472,11 +481,21 @@ function updatePServerajax() {
 //-----------------------------------------------------------------------------------------------------
 // 
 
+// Delete buttons are rendered with data-* attributes rather than inline
+// onclick: HTML-escaping a value does not stop a JS string breakout inside an
+// inline handler (&#39; becomes a live quote before the JS is parsed).
+document.addEventListener('click', function (e) {
+  var srv = e.target && e.target.closest ? e.target.closest('[data-del-server]') : null;
+  if (srv) return deletePServerajax(srv.getAttribute('data-id'), srv.getAttribute('data-tbl'));
+  var bun = e.target && e.target.closest ? e.target.closest('[data-del-bundle]') : null;
+  if (bun) return deletePBundleajax(bun.getAttribute('data-id'), bun.getAttribute('data-name'));
+});
+
 function deletePServerajax(id, tablename) {
 
   if (curentAdminType === 1) {
 
-    let htmlString = `<p>Delete server <code>${tablename}</code>?</p><p class="vmp-hint">The panel stops managing it. Existing VIP data stays on the game server.</p>`
+    let htmlString = `<p>Delete server <code>${escHtml(tablename)}</code>?</p><p class="vmp-hint">The panel stops managing it. Existing VIP data stays on the game server.</p>`
 
     custom_confirm(htmlString, (Mresponse) => {
       if (Mresponse == true) {
@@ -661,13 +680,13 @@ function fetchPBundleListajax() {
           })
           servername = servername.join("\n")
           htmlString += `<tr>
-                        <td>${dataArray[i].bundle_name ? dataArray[i].bundle_name : 'NA'}</td>
+                        <td>${escHtml(dataArray[i].bundle_name || 'NA')}</td>
                         <td><pre class="my-pre">${servername ? servername : 'NA'}</pre></td>
                         <td>${dataArray[i].bundle_price ? dataArray[i].bundle_price + " " + dataArray[i].bundle_currency : 'NA'}</td>
                         <td>${dataArray[i].bundle_sub_days ? dataArray[i].bundle_sub_days : 'NA'}</td>
                         <td>${dataArray[i].bundle_flags ? dataArray[i].bundle_flags : 'NA'}</td>
-                        <td>${dataArray[i].created_at ? dateFormatter(dataArray[i].created_at) : 'NA'}</td>
-                        <td>${(curentAdminType === 1) ? `<button class="btn btn-danger" onclick="deletePBundleajax('${dataArray[i].id}','${dataArray[i].bundle_name}')"><i class="material-icons" >delete_forever</i></button>` : ''}</td>
+                        <td>${escHtml(dataArray[i].created_at ? dateFormatter(dataArray[i].created_at) : 'NA')}</td>
+                        <td>${(curentAdminType === 1) ? `<button class="btn btn-danger" data-del-bundle="1" data-id="${escHtml(dataArray[i].id)}" data-name="${escHtml(dataArray[i].bundle_name)}"><i class="material-icons" >delete_forever</i></button>` : ''}</td>
                         </tr>`
 
         }
@@ -685,7 +704,7 @@ function deletePBundleajax(id, bundlename) {
 
   if (curentAdminType === 1) {
 
-    let htmlString = `<p>Delete bundle <code>${bundlename}</code>?</p><p class="vmp-hint">Only the bundle offer is removed; granted VIPs stay untouched.</p>`
+    let htmlString = `<p>Delete bundle <code>${escHtml(bundlename)}</code>?</p><p class="vmp-hint">Only the bundle offer is removed; granted VIPs stay untouched.</p>`
 
     custom_confirm(htmlString, (Mresponse) => {
       if (Mresponse == true) {

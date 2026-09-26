@@ -57,14 +57,25 @@ const initRazorpayPaymentFunc = async (reqBody, reqUser) => {
 };
 
 const createRzpOrder = async (reqBody, steamId) => {
-  const { server_name, vip_price, vip_days } = reqBody.serverData;
+  // Price the order from OUR row, never from the request body.
+  const panelServerModal = require('../models/panelServerModal.js');
+  const { TABLE_NAME_RE } = require('../models/myDashboardModel.js');
+  const requested = String((reqBody.serverData || {}).tbl_name || '').split(',')[0].trim();
+  if (!TABLE_NAME_RE.test(requested)) {
+    throw 'Invalid server selection';
+  }
+  const row = await panelServerModal.getPanelServerDetails(requested).catch(() => null);
+  if (!row) throw 'Invalid server selection';
+  const server_name = row.server_name;
+  const vip_price = row.vip_price;
+  const vip_days = row.vip_days;
   const productInfo = `${vip_days} days VIP for ${server_name} ${purchaseType(reqBody.type)}`;
 
   // Razorpay supports 160+ currencies on Payment Gateway / Checkout via
   // International Payments (settlement still lands as INR), and the docs are
   // explicit that a foreign currency is passed through as-is with the amount in
   // that currency's smallest sub-unit. It must NOT be forced to INR.
-  const currency = await resolveRowCurrency(reqBody.serverData);
+  const currency = await resolveRowCurrency(row);
   if (!normalizeCurrency(currency)) {
     throw 'This server has no valid currency set, so the price cannot be charged. Please contact an admin.';
   }

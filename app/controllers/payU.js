@@ -49,15 +49,52 @@ exports.initPayUPayment = async (req, res) => {
   }
 }
 
-const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
-  return new Promise(async (resolve, reject) => {
+// PayU redirects the buyer back to surl/furl after checkout. These handlers only
+// render an informational page: the VIP itself is granted by the browser's
+// verified /execafterpaymentprocess call, so nothing is issued here. Without
+// these routes the buyer landed on the panel's 404 after paying.
+const payuReturn = (outcome) => (req, res) => {
+  try {
+    return res.render('PayUReturn', {
+      outcome,
+      // Echoed back by PayU as query params; display-only and length-capped so a
+      // crafted return URL cannot inject anything into the page.
+      txnStatus: String(req.query.txnStatus || '').slice(0, 32),
+      txnid: String(req.query.txnid || req.query.payuMoneyId || '').slice(0, 64),
+    });
+  } catch (error) {
+    logger.error("error in payu return page->", error);
+    return res.status(500).send("Payment return page unavailable. Please check your dashboard.");
+  }
+};
+
+exports.payuReturnSuccess = payuReturn('success');
+exports.payuReturnError = payuReturn('error');
+
+const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {  return new Promise(async (resolve, reject) => {
     try {
 
       // Canonical 64-bit buyer id: goes into the hash input and udf5 alike,
       // so PayU echoes back exactly what we signed.
       const steamId = SteamIDConverter.toCanonical64(reqUser.id);
 
-      let productData = reqBody.serverData
+      // Price the order from OUR row, never from the request. This value is
+      // about to be signed with the merchant key, so a client-supplied amount
+      // would be an attacker-chosen figure authenticated by us. Settlement
+      // re-checked the amount later, but a merchant-signed artefact for the wrong
+      // price is exactly the kind of thing a future change turns into a discount.
+      const panelServerModal = require('../models/panelServerModal.js');
+      const { TABLE_NAME_RE } = require('../models/myDashboardModel.js');
+      const requested = String((reqBody.serverData || {}).tbl_name || '').split(',')[0].trim();
+      if (!TABLE_NAME_RE.test(requested)) return reject("Invalid server selection");
+      const row = await panelServerModal.getPanelServerDetails(requested).catch(() => null);
+      if (!row) return reject("Invalid server selection");
+      const productData = {
+        server_name: row.server_name,
+        vip_price: row.vip_price,
+        vip_currency: row.vip_currency,
+        vip_days: row.vip_days,
+      };
       let productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")
 
       // PayU/BOLT settles in INR only and takes no currency parameter, so a

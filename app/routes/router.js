@@ -50,7 +50,7 @@ module.exports = app => {
   });
   const { saleRecords, getSalesRecord } = require("../controllers/salesRecord.js")
   const { auditRecords, getAuditRecord } = require("../controllers/auditLogs.js")
-  const { initPayUPayment } = require("../controllers/payU.js")
+  const { initPayUPayment, payuReturnSuccess, payuReturnError } = require("../controllers/payU.js")
   const { initRazorpayPayment } = require('../controllers/razorPay');
   const { addPanelServerBundle, getPanelBundlesList, deletePanelBundle } = require("../controllers/panelServerBundles.js")
 
@@ -73,7 +73,10 @@ module.exports = app => {
   });
 
   //route to fetch user data from steam profile
-  app.post('/fetchsteamprofiledata', fetchProfileData);
+  // Admin-only tool (loaded by ManageVIP/ManageAdmin). It proxies an arbitrary
+  // profile URL to Steam, so leaving it unauthenticated let anyone enumerate
+  // Steam profiles and use the panel as an amplifier against Steam.
+  app.post('/fetchsteamprofiledata', authMiddleware.checkToken, resolveLimiter, fetchProfileData);
 
   //Private Router only for User (Steam Authorized)
   app.get('/auth/steam',
@@ -93,6 +96,11 @@ module.exports = app => {
   app.get('/mydashboard', authMiddleware.checkSteamAuthenticated, myDashboard);
   app.post('/execafterpaymentprocess', authMiddleware.checkSteamAuthenticated, afterPaymentProcess);
   app.post('/initpayupayment', authMiddleware.checkSteamAuthenticated, initPayUPayment);
+  // PayU redirects the buyer back here (surl / furl) once checkout finishes.
+  // Unauthenticated on purpose: PayU may return the buyer in a fresh context,
+  // and this page only renders a message - it grants nothing.
+  app.get('/txnsuccesspayu', payuReturnSuccess);
+  app.get('/txnerrorpayu', payuReturnError);
   app.get('/getpanelbundleslistud', authMiddleware.checkSteamAuthenticated, getPanelBundlesList);
 
   // RazorPay routes

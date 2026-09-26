@@ -27,13 +27,24 @@ const auditModal = require("../models/auditLogsModel.js");
 const logThisActivity = (activityObject) => {
   try {
 
-    // validation
-    if (!activityObject.activity) return reject("Activity can't be null");
-    if (!activityObject.created_by) return reject("Created by can't be null");
+    // Best-effort audit logging: this is fire-and-forget and has no caller to
+    // reject to, so a missing field is logged rather than thrown. (It used to
+    // `return reject(...)` with no promise in scope, which threw a
+    // ReferenceError that the catch below swallowed.)
+    if (!activityObject || !activityObject.activity) {
+      logger.warn("activity logger-> skipped: 'activity' is required");
+      return false;
+    }
+    if (!activityObject.created_by) {
+      logger.warn("activity logger-> skipped: 'created_by' is required");
+      return false;
+    }
 
     auditModal.insertNewAuditRecord(activityObject)
+    return true;
   } catch (error) {
     logger.error("error in activity logger->", error);
+    return false;
   }
 }
 

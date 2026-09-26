@@ -56,7 +56,7 @@ exports.PanelSettings = async (req, res) => {
 
 exports.fetchPanelSettings = async (req, res) => {
   try {
-    let result = await fetchPanelSettingsFunc(req.body);
+    let result = await fetchPanelSettingsFunc(req.body, req);
     res.json({
       success: true,
       data: { "res": result, "message": "Panel settings Fetched" }
@@ -70,10 +70,22 @@ exports.fetchPanelSettings = async (req, res) => {
   }
 }
 
-const fetchPanelSettingsFunc = (reqBody) => {
+const fetchPanelSettingsFunc = (reqBody, req) => {
   return new Promise(async (resolve, reject) => {
     try {
       let data = await settingsModal.getAllSettings()
+
+      // webhook_url is a Discord webhook: anyone holding the URL can post to the
+      // operator's channel, so it is a credential. This route is checkToken only,
+      // i.e. any panel admin, not just the super admin. Never hand it out.
+      if (data && data.webhook_url) {
+        const isSuper = req && req.session && Number(req.session.user_type) === 1;
+        data = Object.assign({}, data, {
+          webhook_url: isSuper ? data.webhook_url : '',
+          has_webhook: !!true,
+          webhook_redacted: !isSuper,
+        });
+      }
       resolve(data)
     } catch (error) {
       logger.error("error in fetchPanelSettingsFunc->", error);
@@ -114,6 +126,12 @@ const ALLOWED_SETTINGS_KEYS = new Set([
   'salenotification_discord',
 ]);
 
+// A Discord webhook is posted to on a cron and after every purchase, so an
+// unrestricted value turns the panel into a blind request proxy (SSRF) and lets
+// any admin spam an arbitrary host. Only accept real Discord/Canary webhook
+// URLs; an empty value clears the setting.
+const DISCORD_WEBHOOK_RE = /^https:\/\/(?:canary\.|ptb\.)?(?:discord(?:app)?\.com)\/api\/webhooks\/\d+\/[A-Za-z0-9_.-]{20,}$/;
+
 const updatePanelSettingsFunc = (reqBody, username) => {
   return new Promise(async (resolve, reject) => {
     try {
@@ -121,6 +139,14 @@ const updatePanelSettingsFunc = (reqBody, username) => {
       let userData = await userModel.getUserDataByUsername(username)
 
       if (reqBody.secKey && reqBody.secKey === userData.sec_key) {
+
+        if (reqBody.webhook_url !== undefined) {
+          const v = String(reqBody.webhook_url || '').trim();
+          if (v && !DISCORD_WEBHOOK_RE.test(v)) {
+            return reject("Webhook URL must be a https://discord.com/api/webhooks/... link");
+          }
+          reqBody.webhook_url = v;
+        }
 
         let keyArray = Object.keys(reqBody).filter((k) => ALLOWED_SETTINGS_KEYS.has(k))
         for (let i = 0; i < keyArray.length; i++) {

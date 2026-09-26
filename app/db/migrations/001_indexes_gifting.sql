@@ -19,8 +19,14 @@ CREATE INDEX `ix_tbl_audit_created` ON `tbl_audit_logs` (`created_at`);
 CREATE INDEX `ix_tbl_bundles_rel` ON `tbl_rel_bundle_server` (`bundle_id`, `server_id`);
 
 -- Gifting support (sale_type 3 = gift)
+-- One column per statement on purpose: a multi-clause ALTER is all-or-nothing, so
+-- on a half-migrated table (recipient_steamid present, is_gift missing) MySQL
+-- aborts the whole statement with ER_DUP_FIELDNAME, the runner treats that as
+-- "already applied" and records 001 as done - leaving is_gift permanently absent
+-- and gifting broken with an unknown-column error. Split, each converges.
 ALTER TABLE `tbl_sales`
-  ADD COLUMN `recipient_steamid` varchar(150) COLLATE utf8mb4_unicode_ci NULL AFTER `payer_steamid`,
+  ADD COLUMN `recipient_steamid` varchar(150) COLLATE utf8mb4_unicode_ci NULL AFTER `payer_steamid`;
+ALTER TABLE `tbl_sales`
   ADD COLUMN `is_gift` tinyint(4) NOT NULL DEFAULT 0 AFTER `sale_type`;
 CREATE INDEX `ix_tbl_sales_recipient` ON `tbl_sales` (`recipient_steamid`);
 

@@ -163,7 +163,7 @@ exports.getPanelServerSingle = async (req, res) => {
   try {
 
     req.body.secKey = req.session.sec_key
-    let result = await getPanelServerSingleFunc(req.body);
+    let result = await getPanelServerSingleFunc(req.body, req);
     res.json({
       success: true,
       data: { "res": result, "message": "Server Data Fetched" }
@@ -177,11 +177,23 @@ exports.getPanelServerSingle = async (req, res) => {
   }
 }
 
-const getPanelServerSingleFunc = (reqBody) => {
+const getPanelServerSingleFunc = (reqBody, req) => {
   return new Promise(async (resolve, reject) => {
     try {
 
       let serverData = await panelServerModal.getPanelServerDetails(reqBody.server)
+      // getPanelServerDetails is SELECT *, so the row carried server_rcon_pass in
+      // plaintext and this route is checkToken only (any panel admin). The list
+      // endpoint already masks it; do the same here, and only reveal the secret
+      // to a super admin who also proves the session key.
+      if (serverData && Object.prototype.hasOwnProperty.call(serverData, 'server_rcon_pass')) {
+        const isSuper = req && req.session && Number(req.session.user_type) === 1;
+        const hasKey = req && req.session && reqBody.secKey && reqBody.secKey === req.session.sec_key;
+        serverData = Object.assign({}, serverData, {
+          server_rcon_pass: (isSuper && hasKey) ? serverData.server_rcon_pass : 'Available',
+          rcon_redacted: !(isSuper && hasKey),
+        });
+      }
       resolve(serverData)
     } catch (error) {
       logger.error("error in getPanelServerSingleFunc->", error);

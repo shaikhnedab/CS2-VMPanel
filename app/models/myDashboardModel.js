@@ -158,3 +158,6 @@ var myDashboardModel = {
 }
 
 module.exports = myDashboardModel;
+// Exported so the payment controllers can validate a client-supplied tbl_name
+// before interpolating it into a query or pricing an order.
+module.exports.TABLE_NAME_RE = TABLE_NAME_RE;

@@ -72,17 +72,23 @@ var salesModel = {
       try {
 
         // validation
+        // Only the fields we cannot do without are mandatory. payer_name,
+        // payer_surname and product_desc are descriptive: PayPal accounts with
+        // no surname on file (and UPI/wallet flows with no email) used to be
+        // rejected here, AFTER the money was captured, so the buyer paid and got
+        // no VIP. Never make a descriptive field a hard requirement.
         if (!dataObj.order_id) return reject("Order Id Missing");
         if (!dataObj.payer_id) return reject("Payer Id Missing");
         if (!dataObj.payer_steamid) return reject("Payer Steam Id Missing");
-        if (!dataObj.payer_email) return reject("Payer Email Missing");
-        if (!dataObj.payer_name) return reject("Payer Name Missing");
-        if (!dataObj.payer_surname) return reject("Payer Surname Missing");
-        if (!dataObj.product_desc) return reject("Product Desc Missing");
         if (!dataObj.amount_paid) return reject("Amount Paid Missing");
         if (!dataObj.amount_currency) return reject("Amount Currency Missing");
         if (!dataObj.status) return reject("Payment Status Missing");
         if (!dataObj.sale_type) return reject("Sale Type Missing");
+
+        const payerEmail = dataObj.payer_email || null;
+        const payerName = dataObj.payer_name || null;
+        const payerSurname = dataObj.payer_surname || null;
+        const productDesc = dataObj.product_desc || null;
 
         let paymentGate = gateway === 'paypal' ? "PayPal" : gateway === 'payu' ? "PayU" : gateway === 'razorpay' ? "Razorpay" : "NA"
         let currentDateTime = new Date()
@@ -106,7 +112,7 @@ var salesModel = {
                                           sale_type,
                                           is_gift,
                                           created_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [paymentGate, dataObj.order_id, dataObj.payer_id, dataObj.payer_steamid, recipientSteamId, dataObj.payer_email, dataObj.payer_name, dataObj.payer_surname, dataObj.product_desc, dataObj.amount_paid, dataObj.amount_currency, dataObj.status, dataObj.sale_type, isGift, currentDateTime]);
+            [paymentGate, dataObj.order_id, dataObj.payer_id, dataObj.payer_steamid, recipientSteamId, payerEmail, payerName, payerSurname, productDesc, dataObj.amount_paid, dataObj.amount_currency, dataObj.status, dataObj.sale_type, isGift, currentDateTime]);
           const queryRes = await db.query(query);
           if (!queryRes) return reject("error in insertion");
           return resolve(true);

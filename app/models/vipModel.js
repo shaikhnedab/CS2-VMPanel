@@ -196,10 +196,22 @@ var vipDataModel = {
         }
         await db.withTransaction(async (exec) => {
           for (let i = 0; i < dataObj.server.length; i++) {
-            const query = db.queryFormat(`UPDATE ${dataObj.server[i]} SET expireStamp = expireStamp + ? WHERE authId IN (?)`, [addSeconds, matchIds]);
+            // Extend from the later of the stored expiry and now, so a long
+            // expired row is not extended from its old stamp (which would leave
+            // it still expired after "renewing").
+            const query = db.queryFormat(
+              `UPDATE ${dataObj.server[i]}
+                  SET expireStamp = GREATEST(expireStamp, UNIX_TIMESTAMP()) + ?
+                WHERE authId IN (?)`,
+              [addSeconds, matchIds]
+            );
             const queryRes = await exec(query);
-            if (!queryRes) {
-              throw new Error("error in update");
+            // For an UPDATE mysql2 returns an OkPacket, which is truthy even
+            // when nothing matched - so a renewal that extended no row used to
+            // report success and the buyer got nothing. Check affectedRows.
+            const affected = queryRes && (queryRes.affectedRows !== undefined ? queryRes.affectedRows : 1);
+            if (!queryRes || affected === 0) {
+              throw new Error("No VIP row matched this renewal");
             }
           }
         });

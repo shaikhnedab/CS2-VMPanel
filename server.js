@@ -79,14 +79,28 @@ function isCompleteNow() {
 // allowlist is sent to the wizard; once setup is complete the wizard
 // itself is closed (404) and never reopens on later DB errors.
 function installGate(req, res, next) {
+  // A config.json that exists but cannot be parsed is a hard error, not
+  // "first boot". Falling through would silently use the example config, whose
+  // setupComplete is false, and reopen the unauthenticated install wizard on a
+  // live panel. Refuse to serve instead.
+  const cfgBroken = typeof config.configLoadFailure === 'function' ? config.configLoadFailure() : null;
+  if (cfgBroken) {
+    logger.error("refusing to start - configuration is unusable:", cfgBroken);
+    return res.status(503).type('text/plain').send(
+      'The panel configuration could not be loaded, so it will not start.\n\n' + cfgBroken + '\n'
+    );
+  }
   const complete = isCompleteNow();
   const url = (req.path || String(req.originalUrl || '').split('?')[0] || '');
   const isInstall = url === '/install' || url.startsWith('/install/');
   const isHealth = url === '/healthz';
-  const isPublic = url.startsWith('/public/');
+  // Static assets are served from express.static('public') mounted at the ROOT,
+  // so the real paths are /css/*, /js/*, /images/* - the old '/public/' prefix
+  // matched nothing and the wizard rendered unstyled.
+  const isAsset = /^\/(css|js|images|fonts|img)\//.test(url);
   if (!complete) {
     const methodOk = req.method === 'GET' || req.method === 'POST' || req.method === 'HEAD';
-    if ((isInstall && (req.method === 'GET' || req.method === 'POST')) || isHealth || isPublic) return next();
+    if ((isInstall && (req.method === 'GET' || req.method === 'POST')) || isHealth || isAsset) return next();
     if (isHealth && !methodOk) return next();
     return res.redirect(302, '/install');
   }
@@ -279,12 +293,19 @@ if (require.main === module) {
 }
 
 // ========== process error handling [ start ] ==========
+// After an uncaughtException the process is in an undefined state and must not
+// keep serving: e.g. a throw inside the install handler leaves its `installing`
+// flag set forever, so /install then answers "setup already in progress" for the
+// life of the process with no way out but a restart. Log, then exit and let the
+// supervisor (restart: unless-stopped) bring it back clean.
 process.on('uncaughtException', err => {
   logger.error("'uncaughtException' occurred! \n error:", err);
+  logger.error('Exiting so the supervisor can restart the panel in a clean state.');
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', reason.stack || reason);
+  logger.error('Unhandled Rejection at:', (reason && reason.stack) || String(reason));
 });
 // ========== process error handling [ end ] ==========
 

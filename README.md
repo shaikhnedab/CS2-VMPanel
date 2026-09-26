@@ -112,6 +112,30 @@ which case those requests fail with a generic error instead. To re-run setup: st
 > Back up `config.json` — it holds your DB password and signing secrets. It is gitignored and never
 > committed. `npm run migrate` stays idempotent and no-ops (exit 0) until setup completes.
 
+If `config.json` exists but cannot be parsed, the panel now **refuses to start** (HTTP 503) instead of
+falling back to the shipped template. The template has `setupComplete: false`, so silently using it
+would drop a live panel back into the first-boot wizard, where anyone who can reach the port could
+create a super-admin. Fix or remove the file and restart.
+
+## Upgrading an existing install
+
+```bash
+docker compose pull && docker compose up -d --force-recreate
+docker compose exec panel npm run migrate    # idempotent; safe to re-run
+```
+
+`--force-recreate` matters: container environment is snapshotted at create time, so without it the old
+image and env keep running.
+
+**Run `npm run migrate` on upgrades.** The install wizard runs migrations, but a panel that is already
+set up 404s `/install`, so an in-place upgrade never applies them. The unique index on
+`tbl_sales.order_id` is what stops one payment from granting a VIP twice — it is created by migration
+`001`, so skipping migrations removes that protection. `schema_migrations` records what has run;
+statements that are already applied are tolerated (`ER_DUP_KEYNAME` / `ER_DUP_FIELDNAME`), so the
+command is safe to repeat.
+
+A `config.json` written by an older version still works; new keys fall back to documented defaults.
+
 ### Steam ID lookup
 
 The lookup box on **Manage VIP** and the receiver box on the gift flow both accept any of these, and
@@ -208,6 +232,12 @@ you have confirmed the API is unusable for your account.
 | Button missing | Gateway enabled? **All** its secrets present (PayU key+salt, Razorpay id+secret, PayPal id+secret)? Row currency `INR` for PayU? Container recreated after the edit? |
 | Checkout fails | Wrong-mode credentials — a test key on live checkout, or vice versa |
 | "Could not confirm the payment with …" | The gateway API was unreachable or returned an error. The buyer may well have been charged — reconcile with the gateway before re-enabling |
+| "PayU is rate limiting verification requests" | The `verify_payment` API is throttling (sandbox keys throttle within a handful of calls). Wait, or set `PAYU_VERIFY_API=false` — see [Payment verification](#payment-verification) |
+| Paid but no VIP | Check `VMPanel.log` for `payment verification failed`; the reason is logged there. A sale row with no matching `sv_` row means the grant failed after the order was recorded |
+
+**Log location:** `VMPanel.log` in the working directory (gitignored, 10 MB × 3 rotated). It is where
+payment-verification failures, RCON refresh results and migration errors are recorded — the buyer-facing
+message deliberately does not leak gateway internals, so the log is the place to look.
 
 ## Environment
 
@@ -258,6 +288,34 @@ sudo a2enmod proxy proxy_http headers rewrite ssl
 sudo cp deploy/apache-vmPanel.conf /etc/apache2/sites-available/vmpanel.conf
 sudo a2ensite vmpanel && sudo apache2ctl configtest && sudo systemctl reload apache
 ```
+
+## Security notes
+
+What the panel enforces, so you know what you are relying on:
+
+- **Payments are verified with the gateway, not the browser.** See
+  [Payment verification](#payment-verification). A forged `status: "SUCCESS"` grants nothing. Orders are
+  priced from the database, never from the request, and the SourceMod flag is taken from our own row —
+  a crafted request cannot grant itself an admin group.
+- **Replay protection** keys on the gateway-confirmed order id and stores that same composite key, so the
+  value checked and the value recorded can never drift apart.
+- **Per-purchase pre-validation** (receiver already holds VIP, already holds VIP on a plain purchase,
+  bundle match) runs *before* the order is recorded, so a refusal never burns the order id and strands a
+  paid buyer.
+- **SQL** goes through `mysql.format()` placeholders. Dynamic table names cannot be parameterised, so
+  every one is checked against `^[A-Za-z0-9_]{1,64}$` before interpolation.
+- **Output escaping**: server names, bundle names and other stored strings are HTML-escaped before they
+  reach `innerHTML`, and delete controls use `data-*` attributes rather than inline `onclick` (HTML
+  escaping does not prevent a JS string breakout inside a handler).
+- **Secrets stay server-side.** The Discord webhook is redacted for non-super-admins and validated
+  against `discord.com/api/webhooks/…` on save; the RCON password is masked for everyone except a
+  super-admin presenting the session key; a buyer's dashboard HTML never contains it.
+- **Session cookies** are `httpOnly` + `sameSite=lax`, and `Secure` when served through a TLS proxy.
+  Request bodies are capped at 1 MB.
+- **Known limitations** worth knowing: a panel admin JWT is valid for 7 days with no revocation list, so
+  deleting an admin does not immediately invalidate an outstanding token; `checkToken` authenticates but
+  does not re-read the user row on each request. Set `PUBLIC_BASE_URL` — without it the panel builds
+  absolute URLs (Steam callbacks, PayU returns) from the client's `Host` header.
 
 ## Layout
 

@@ -55,7 +55,9 @@ exports.getSalesRecord = async (req, res) => {
         data: { "res": result, "message": "Sale Records Fetched" }
       });
     } else {
-      return reject("You don't have permissions to access records")
+      // There is no promise wrapper here, so `reject` was undefined and this
+      // threw a ReferenceError instead of denying cleanly. Respond properly.
+      return res.json({ success: false, data: { error: "You don't have permissions to access records" } });
     }
   } catch (error) {
     logger.error("error in getSalesRecord->", error);

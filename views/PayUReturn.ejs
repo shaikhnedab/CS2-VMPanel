@@ -1,0 +1,46 @@
+<%- include('Header.ejs') %>
+
+<%# PayU redirects the buyer back here (surl/furl) after checkout. The VIP is
+    granted by the browser's verified /execafterpaymentprocess call, so this
+    page is purely informational - it must never grant anything itself. %>
+<div class="content vmp-auth-page">
+  <div class="container-fluid">
+    <div class="vmp-auth-wrap">
+      <div style="text-align:center;max-width:560px">
+        <div class="vmp-stat-icon <%= outcome === 'success' ? 'blue' : 'pink' %>" style="width:76px;height:76px;margin:0 auto 20px">
+          <i class="material-icons" style="font-size:38px"><%= outcome === 'success' ? 'check_circle' : 'error' %></i>
+        </div>
+
+        <% if (outcome === 'success') { %>
+          <h3 style="font-weight:700">Payment received</h3>
+          <p style="color:var(--vmp-muted)">
+            Thanks! Your payment is being confirmed with PayU and your VIP is being applied.
+            This usually takes a few seconds — your dashboard will update on its own.
+          </p>
+        <% } else { %>
+          <h3 style="font-weight:700">Payment not completed</h3>
+          <p style="color:var(--vmp-muted)">
+            The payment did not go through, so no VIP was issued and you have not been charged.
+            You can try again from the store, or pick another payment method.
+          </p>
+        <% } %>
+
+        <% if (txnStatus) { %>
+          <p style="margin-top:14px">
+            <span class="vmp-badge <%= outcome === 'success' ? 'ok' : '' %>">PayU status: <%= txnStatus %></span>
+            <% if (txnid) { %>
+              <span class="vmp-badge violet" title="PayU transaction id">Ref: <%= txnid %></span>
+            <% } %>
+          </p>
+        <% } %>
+
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:22px;flex-wrap:wrap">
+          <a href="/mydashboard" class="btn btn-primary"><i class="material-icons" style="vertical-align:-6px;font-size:18px">confirmation_number</i> My VIP</a>
+          <a href="javascript:void(0)" onclick="window.history.back()" class="btn btn-default">Go back</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('Footer.ejs') %>

@@ -19,6 +19,14 @@ function configPath() {
   return process.env.CONFIG_PATH || path.join(__dirname, 'config.json');
 }
 
+// Set when a config.json EXISTS but cannot be parsed. Falling back to the
+// example template in that state is fail-OPEN: the template has
+// setupComplete:false, so a live panel with a truncated/corrupt config would
+// drop into first-boot mode and let anyone who can reach the port run the
+// install wizard against the production database. Callers check this and
+// refuse to serve instead.
+let configLoadError = null;
+
 function loadConfigFile() {
   const tryParse = (p) => {
     try {
@@ -30,9 +38,28 @@ function loadConfigFile() {
       return null;
     }
   };
-  return tryParse(configPath())
-    || tryParse(path.join(__dirname, 'example_config.json'))
-    || {};
+
+  const p = configPath();
+  const own = tryParse(p);
+  if (own) return own;
+
+  // Distinguish "absent" (first boot, fine) from "present but unreadable".
+  let present = false;
+  try { present = fs.existsSync(p); } catch (e) { present = false; }
+  if (present) {
+    let detail = 'unreadable';
+    try { JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { detail = e.message; }
+    configLoadError = `${p} exists but could not be used as JSON (${detail}). `
+      + 'Refusing to start with the example config, because that would reopen the install wizard. '
+      + 'Fix or remove the file and restart.';
+    return null;
+  }
+
+  return tryParse(path.join(__dirname, 'example_config.json')) || {};
+}
+
+function configLoadFailure() {
+  return configLoadError;
 }
 
 let rawConfig = loadConfigFile();
@@ -126,8 +153,15 @@ function isSetupComplete() {
     // process.env taking precedence so legacy .env installs keep working.
     // Reads the file fresh every call — never a stale require cache.
     const fileCfg = loadConfigFile();
-    const flag = String(process.env.SETUP_COMPLETE || '').toLowerCase() === 'true'
-      || fileCfg.setupComplete === true;
+    // If SETUP_COMPLETE is set at all it decides, so an operator who has been
+    // compromised can force the panel back into the wizard to rotate secrets.
+    // It used to be OR'd with the file, which made `SETUP_COMPLETE=false` a no-op
+    // whenever config.json said true. The `true` direction stays fail-safe: it
+    // still requires real DB credentials and 32+ char secrets below.
+    const envFlag = String(process.env.SETUP_COMPLETE || '').toLowerCase();
+    const flag = envFlag === 'true' ? true
+      : envFlag === 'false' ? false
+        : fileCfg.setupComplete === true;
     if (!flag) return false;
     const fdb = (fileCfg && fileCfg.db) || {};
     const host = process.env.DB_HOST || fdb.db_host || '';
@@ -176,7 +210,10 @@ function applyEnv(cfg) {
   };
   cfg.usersTable = process.env.USERS_TABLE || rc.usersTable;
   cfg.settingTable = process.env.SETTINGS_TABLE || rc.settingTable;
-  cfg.serverTable = process.env.SERVER_TABLE || rc.serverTable;
+  // SERVERS_TABLE is the documented name (.env.example) and what the initial
+  // load reads; SERVER_TABLE here meant a reload silently preferred an
+  // undocumented variable over config.json.
+  cfg.serverTable = process.env.SERVERS_TABLE || rc.serverTable;
   cfg.salestable = process.env.SALES_TABLE || rc.salestable;
   cfg.audittable = process.env.AUDIT_TABLE || rc.audittable;
   cfg.bundletable = process.env.BUNDLES_TABLE || rc.bundletable;
@@ -217,9 +254,25 @@ function applyEnv(cfg) {
 
 function reload() {
   try {
-    require('dotenv').config({ path: dotenvPath(), override: true });
+    // NO override: the documented precedence is env var > config.json, and
+    // dotenv must not push a legacy .env back OVER an env var that is already
+    // set. With override:true the wizard wrote credentials to config.json, then
+    // reloaded, and installed into whatever database .env named instead of the
+    // one it had just validated.
+    require('dotenv').config({ path: dotenvPath() });
   } catch (e) { /* dotenv optional */ }
-  rawConfig = loadConfigFile();
+  configLoadError = null;
+  const fresh = loadConfigFile();
+  // Re-apply the top-level spread too, or keys that only exist in the file
+  // (setupComplete and anything added later) stay frozen at their boot values
+  // while applyEnv() refreshes everything it knows about.
+  if (fresh && Object.keys(fresh).length) {
+    for (const k of Object.keys(config)) {
+      if (!Object.prototype.hasOwnProperty.call(fresh, k) && !RESERVED_CONFIG_KEYS.has(k)) delete config[k];
+    }
+    Object.assign(config, fresh);
+  }
+  rawConfig = fresh || {};
   applyEnv(config);
   return config;
 }
@@ -228,5 +281,12 @@ config.isSetupComplete = isSetupComplete;
 config.validateEnv = validateEnv;
 config.configPath = configPath;
 config.reload = reload;
+config.configLoadFailure = configLoadFailure;
+
+// Keys that live on `config` as functions/metadata rather than file contents,
+// so reload() must not delete them when the file does not define them.
+const RESERVED_CONFIG_KEYS = new Set([
+  'isSetupComplete', 'validateEnv', 'configPath', 'reload', 'configLoadFailure',
+]);
 
 module.exports = config;

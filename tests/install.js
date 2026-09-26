@@ -288,16 +288,30 @@ async function main() {
       assert.ok(m.every((t) => /\bdefer\b/.test(t)), `${host} deferred`);
     }
   });
+  // The payment init controllers resolve the server row and price from OUR
+  // database rather than the request, so tests must provide one.
+  const withServerRow = async (row, fn) => {
+    const panelServerModal = require('../app/models/panelServerModal.js');
+    const orig = panelServerModal.getPanelServerDetails;
+    panelServerModal.getPanelServerDetails = async () => (typeof row === 'function' ? row() : row);
+    try { return await fn(); } finally { panelServerModal.getPanelServerDetails = orig; }
+  };
+  const INR_ROW = {
+    tbl_name: 'sv_t', server_name: 'S', vip_price: 100, vip_currency: 'INR', vip_days: 30,
+    vip_flag: '"0:a"', vip_slots: 30,
+  };
+
   await ok('payU callbacks follow explicit base, else request host', async () => {
     const config = require('../app/config');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');
     const saved = config.publicBaseUrl;
     const reqOf = (proto, host) => ({ protocol: proto, get: (h) => (h === 'host' ? host : undefined) });
     const formBody = {
-      serverData: { vip_days: 30, server_name: 'S', vip_price: 100, vip_currency: 'INR' },
+      serverData: { tbl_name: 'sv_t', vip_days: 30, server_name: 'S', vip_price: 100, vip_currency: 'INR' },
       type: 'newPurchase', userFirstName: 'T', userEmail: 't@e.com', userMobile: '1',
     };
     try {
+      await withServerRow(INR_ROW, async () => {
       config.publicBaseUrl = 'https://vip.example.com/';
       let r = await initPayUPaymentFunc(formBody, { id: '76561198092023766' }, 'k', reqOf('http', 'other.example:3535'));
       assert.strictEqual(r.surl, 'https://vip.example.com/txnsuccesspayu');
@@ -307,6 +321,7 @@ async function main() {
       assert.strictEqual(r.surl, 'http://panel.example.com:3535/txnsuccesspayu');
       assert.strictEqual(r.furl, 'http://panel.example.com:3535/txnerrorpayu');
       assert.ok(!/undefined|localhost/.test(r.surl), 'no placeholder host leaks');
+      });
     } finally {
       config.publicBaseUrl = saved;
     }
@@ -1294,9 +1309,12 @@ async function main() {
     // The storefront gate is cosmetic; these controllers are the real guard.
     const { initPayUPaymentFunc } = require('../app/controllers/payU.js');
     const req = { protocol: 'https', get: () => 'vip.example.com' };
-    const mk = (cur) => ({ serverData: { server_name: 'S', vip_price: 30, vip_currency: cur, vip_days: 30 }, type: 'newPurchase', userFirstName: 'A', userEmail: 'a@e.com', userMobile: '1' });
-    await assert.rejects(() => initPayUPaymentFunc(mk('USD'), { id: '76561198092023766' }, 'k', req), /only charge in INR/);
-    const ok = await initPayUPaymentFunc(mk('INR'), { id: '76561198092023766' }, 'k', req);
+    const mk = (cur) => ({ serverData: { tbl_name: 'sv_t', server_name: 'S', vip_price: 30, vip_currency: cur, vip_days: 30 }, type: 'newPurchase', userFirstName: 'A', userEmail: 'a@e.com', userMobile: '1' });
+    const row = (cur) => Object.assign({}, INR_ROW, { vip_price: 30, vip_currency: cur });
+    await withServerRow(row('USD'), async () => {
+      await assert.rejects(() => initPayUPaymentFunc(mk('USD'), { id: '76561198092023766' }, 'k', req), /only charge in INR/);
+    });
+    const ok = await withServerRow(row('INR'), () => initPayUPaymentFunc(mk('INR'), { id: '76561198092023766' }, 'k', req));
     assert.strictEqual(ok.amount, '30.00', 'INR server still transacts, amount fixed to 2 decimals');
 
     const rz = require('../app/controllers/razorPay.js');
@@ -1350,15 +1368,200 @@ async function main() {
     // India-only SDKs load because at least one card is INR-priced.
     assert.ok(/bolt\.min\.js/.test(h) && /checkout\.razorpay\.com/.test(h), 'INR SDKs still loaded');
   });
+  await ok('settlement never trusts the client for price, flag or server count', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // vip_flag is the SourceMod admin/immunity assignment. It used to be read
+    // straight off the request, so any buyer could grant themselves an admin
+    // group for the purchased period.
+    assert.ok(!/const flag = reqBody\.serverData\.vip_flag/.test(ud), 'vip_flag is not taken from the request');
+    assert.ok(/flag = srv\.vip_flag/.test(ud), 'vip_flag comes from our own row');
+    assert.ok(/flag = chosen\.bundle_flags/.test(ud), 'bundle flag comes from our own row');
+    // A non-bundle purchase must cover exactly one server, else a crafted
+    // "sv_a,sv_b" buys two for one price.
+    assert.ok(/if \(tbls\.length > 1\) return reject\("Invalid server selection"\)/.test(ud), 'single-server purchases enforced');
+    // The replay key that is CHECKED must be the key that is STORED.
+    assert.ok(/reqBody\.verifiedOrderKey = `\$\{reqBody\.gateway\}:\$\{verdict\.orderId\}`/.test(ud), 'composite key built once');
+    assert.ok(/orderExists\(reqBody\.verifiedOrderKey\)/.test(ud), 'checked on that key');
+    assert.ok(/order_id: reqBody\.verifiedOrderKey \|\| quotedOrderId/.test(ud), 'and the same key is stored');
+    assert.ok(!/orderExists\(quotedOrderId\)/.test(ud), 'the bypassable client-id pre-check is gone');
+    // Pre-grant validation must precede the sale insert, or a refusal burns the
+    // order id and blocks every retry.
+    const pre = ud.indexOf('Pre-grant validation');
+    const ins = ud.indexOf('insertNewSaleRecord(paymentInsertObj');
+    assert.ok(pre > 0 && ins > 0 && pre < ins, 'validation happens before the order is consumed');
+    // A plain purchase must not stack a second row for someone who has VIP.
+    assert.ok(/use Renew instead/.test(ud), 'duplicate VIP row refused on a plain purchase');
+  });
+  await ok('settlement never trusts the client for the bundle price', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // The bundle payload carries no bundle_name key, so the lookup always missed
+    // and every bundle payment was captured then refused: money taken, no VIP.
+    assert.ok(/\(reqBody\.serverData \|\| \{\}\)\.bundle_name \|\| \(reqBody\.serverData \|\| \{\}\)\.server_name/.test(ud),
+      'bundle resolved by bundle_name, falling back to server_name');
+    assert.ok(!/reqBody\.serverData\.bundle_price/.test(ud), 'price is not read from the request');
+    // Both payload builders must send the key the server looks for.
+    for (const rel of ['app/controllers/userDashboard.js', 'public/js/myDashboard.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      assert.ok(/"bundle_name":\s*(bundleList\[i\]|dataArray\[i\])\.bundle_name/.test(src),
+        `${rel} sends bundle_name in the payload`);
+    }
+  });
+  await ok('buyer HTML never carries the RCON password', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // getPanelServersList is SELECT *, so the row carried server_rcon_pass and
+    // the renew buttons serialise `serverdata` into the buyer's page.
+    assert.ok(/getPanelServersSaleListing\(\)/.test(ud), 'membership enrichment uses the secret-free projection');
+    const single = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'panelServers.js'), 'utf8');
+    assert.ok(/rcon_redacted/.test(single), 'the single-server endpoint masks the RCON password');
+    assert.ok(/isSuper && hasKey/.test(single), 'only a super admin with the session key sees it');
+    const settings = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'panelSettings.js'), 'utf8');
+    assert.ok(/webhook_redacted/.test(settings), 'the Discord webhook is not handed to non-super admins');
+    assert.ok(/DISCORD_WEBHOOK_RE/.test(settings), 'webhook URL is validated (no blind SSRF)');
+  });
+  await ok('admin-only and proxy routes are authenticated', () => {
+    const router = fs.readFileSync(path.join(__dirname, '..', 'app', 'routes', 'router.js'), 'utf8');
+    // It is an admin tool (loaded by ManageVIP/ManageAdmin) and proxies to Steam.
+    const m = router.match(/app\.post\('\/fetchsteamprofiledata'[^)]*\)/);
+    assert.ok(m, 'route exists');
+    assert.ok(/checkToken/.test(m[0]), 'fetchsteamprofiledata requires auth');
+    assert.ok(!/app\.post\('\/fetchsteamprofiledata',\s*fetchProfileData\)/.test(router), 'it is not left open');
+  });
+  await ok('a broken config.json fails closed instead of reopening the installer', () => {
+    const fsx = require('fs');
+    const osx = require('os');
+    const pathx = require('path');
+    const dir = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'vmp-cfg-'));
+    const good = { setupComplete: true, db: { db_host: 'h', db_user: 'u', db_name: 'n' }, jwt: { key: 'x'.repeat(40) }, app: { secret: 'y'.repeat(40) } };
+    const writeAndLoad = (contents) => {
+      const p = pathx.join(dir, 'config.json');
+      if (contents === null) { try { fsx.unlinkSync(p); } catch (e) { /* absent */ } }
+      else fsx.writeFileSync(p, contents);
+      const cfgPath = pathx.join(dir, 'c.json');
+      fsx.writeFileSync(cfgPath, p);
+      const cfg = require(pathx.join(__dirname, '..', 'app', 'config', 'index.js'));
+      const savedPath = process.env.CONFIG_PATH;
+      process.env.CONFIG_PATH = p;
+      try { cfg.reload(); } finally { process.env.CONFIG_PATH = savedPath; }
+      return cfg;
+    };
+    const cfg = require(pathx.join(__dirname, '..', 'app', 'config', 'index.js'));
+    const savedConfigPath = process.env.CONFIG_PATH;
+    // absent -> first boot, wizard allowed, no failure flagged
+    writeAndLoad(null);
+    assert.strictEqual(cfg.configLoadFailure(), null, 'an absent config is normal first boot');
+    // valid -> complete
+    writeAndLoad(JSON.stringify(good));
+    assert.strictEqual(cfg.configLoadFailure(), null, 'a valid config raises no failure');
+    // CORRUPT -> must be flagged, not silently replaced by the example template
+    // (whose setupComplete is false, which reopens the unauthenticated wizard).
+    writeAndLoad('{ this is not json');
+    const err = cfg.configLoadFailure();
+    assert.ok(err && /could not be used as JSON/.test(err), 'a corrupt config is reported, not swallowed');
+    const srv = fsx.readFileSync(pathx.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(/configLoadFailure/.test(srv), 'the server checks it');
+    assert.ok(/res\.status\(503\)/.test(srv), 'and refuses to serve with 503');
+    // Restore the REAL config: config.reload() mutates module-level state that
+    // the controllers captured at require time, so leaving it pointed at a temp
+    // file silently breaks every later test that reads gateway config.
+    writeAndLoad(JSON.stringify(good));
+    assert.strictEqual(cfg.configLoadFailure(), null);
+    if (savedConfigPath) process.env.CONFIG_PATH = savedConfigPath;
+    else delete process.env.CONFIG_PATH;
+    cfg.reload();
+    assert.ok(cfg.payment_gateways && cfg.payment_gateways.payU, 'payment gateway config restored');
+  });
+  await ok('config precedence and reload stay consistent with the docs', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'config', 'index.js'), 'utf8');
+    // dotenv must not push a legacy .env back OVER an env var that is set: the
+    // wizard wrote credentials, reloaded, and installed into the .env database.
+    assert.ok(!/dotenv'\)\.config\(\{[^}]*override:\s*true/.test(src), 'reload() does not use dotenv override');
+    // The documented name is SERVERS_TABLE; reload used to read SERVER_TABLE.
+    const tableReads = src.match(/env\.SERVER_?S?_?TABLE/g) || [];
+    assert.ok(!/process\.env\.SERVER_TABLE\b/.test(src), 'the undocumented SERVER_TABLE is gone');
+    assert.ok(tableReads.length >= 2, 'SERVERS_TABLE is read on both load and reload');
+    // reload() must re-apply the top-level file spread, or setupComplete sticks.
+    assert.ok(/Object\.assign\(config, fresh\)/.test(src), 'reload re-applies file keys');
+    assert.ok(/RESERVED_CONFIG_KEYS/.test(src), 'and keeps its helper functions');
+    // SETUP_COMPLETE=false must be able to force the panel back to the wizard.
+    assert.ok(/envFlag === 'false' \? false/.test(src), 'SETUP_COMPLETE=false overrides the file');
+  });
+  await ok('migrations apply one change per statement so they converge', () => {
+    const sql = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '001_indexes_gifting.sql'), 'utf8');
+    const executable = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    const stmts = executable.split(';').map((s) => s.trim()).filter((s) => s.length > 0);
+    for (const s of stmts) {
+      const adds = (s.match(/ADD COLUMN/g) || []).length;
+      assert.ok(adds <= 1, `at most one ADD COLUMN per statement, got ${adds}: ${s.slice(0, 60)}`);
+    }
+    // A multi-clause ALTER aborts whole if one column exists, and the runner
+    // records the file as applied anyway.
+    assert.ok(!/ADD COLUMN[^;]*,\s*\n?\s*ADD COLUMN/.test(executable), 'no multi-clause ADD COLUMN');
+  });
+  await ok('settings tables are escaped and delete buttons avoid inline handlers', () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'PanelSettings.js'), 'utf8');
+    // A low-privilege admin could store an <img onerror> as a server/bundle name;
+    // the super admin's settings page then executed it in their session.
+    assert.ok(/var escHtml = window\.escHtml \|\|/.test(js), 'escHtml available');
+    assert.ok(!/onclick="deleteP(Server|Bundle)ajax/.test(js), 'no inline onclick with interpolated data');
+    assert.ok(/data-del-server="1"/.test(js) && /data-del-bundle="1"/.test(js), 'delete controls use data attributes');
+    assert.ok(/closest\('\[data-del-server\]'\)/.test(js), 'with a delegated listener');
+    // The confirm dialog built by those handlers must escape too.
+    assert.ok(/<code>\$\{escHtml\(tablename\)\}<\/code>/.test(js), 'confirm dialog escapes the name');
+    assert.ok(/<code>\$\{escHtml\(bundlename\)\}<\/code>/.test(js), 'bundle dialog escapes the name');
+    // The shared helper must exist and cover the dangerous characters.
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'vmp-ui.js'), 'utf8');
+    assert.ok(/window\.escHtml = window\.escHtml \|\|/.test(ui), 'shared escHtml defined in vmp-ui.js');
+    const shared = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
+    assert.ok(/function escHtml/.test(shared), 'the same escaping is used elsewhere');
+  });
+  await ok('payment orders are priced from the database, not the request', async () => {
+    // The amount is signed with the merchant key, so a client-supplied figure
+    // would be an attacker-chosen value authenticated by us.
+    for (const rel of ['app/controllers/payU.js', 'app/controllers/razorPay.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      assert.ok(/getPanelServerDetails\(requested\)/.test(src), `${rel} reads the server row`);
+      assert.ok(!/vip_price, vip_currency, vip_days \} = reqBody\.serverData/.test(src),
+        `${rel} does not destructure price from the request`);
+      assert.ok(!/resolveRowCurrency\(reqBody\.serverData\)/.test(src), `${rel} does not take currency from the request`);
+    }
+    const model = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'myDashboardModel.js'), 'utf8');
+    assert.ok(/module\.exports\.TABLE_NAME_RE/.test(model), 'the table-name allow-list is exported for validation');
+  });
+  await ok('a renewal that extends nothing is not reported as success', () => {
+    const vip = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'vipModel.js'), 'utf8');
+    // mysql2 returns a truthy OkPacket for an UPDATE that matched no rows.
+    assert.ok(/affectedRows/.test(vip), 'affectedRows is inspected');
+    assert.ok(/No VIP row matched this renewal/.test(vip), 'and a no-op renewal is refused');
+    // Extend from the later of the stored expiry and now.
+    assert.ok(/GREATEST\(expireStamp, UNIX_TIMESTAMP\(\)\)/.test(vip), 'renewal extends from max(expiry, now)');
+    const sales = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'salesModel.js'), 'utf8');
+    assert.ok(!/Payer Surname Missing/.test(sales), 'a missing surname no longer voids a paid order');
+    assert.ok(!/Payer Email Missing/.test(sales), 'a missing email no longer voids a paid order');
+    assert.ok(/const payerSurname = dataObj\.payer_surname \|\| null/.test(sales), 'descriptive fields are normalised, not required');
+  });
+  await ok('fix: handlers without a promise cannot reject', () => {
+    // `return reject(...)` inside an async express handler threw a ReferenceError
+    // instead of denying access, so the buyer saw a ReferenceError.
+    for (const rel of ['app/controllers/auditLogs.js', 'app/controllers/salesRecord.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      assert.ok(!/return reject\(/.test(src), `${rel} no longer calls an undefined reject`);
+      assert.ok(/permissions to access records/.test(src), `${rel} denies with a real message`);
+    }
+    const act = fs.readFileSync(path.join(__dirname, '..', 'app', 'utils', 'activityLogger.js'), 'utf8');
+    // strip comments so the explanatory note about the old bug is not matched
+    const actCode = act.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.ok(!/return reject\(/.test(actCode), 'activityLogger no longer calls an undefined reject');
+    assert.ok(/logger\.warn/.test(act), 'it logs the reason instead');
+  });
   await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
     const crypto = require('crypto');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');
     const req = { protocol: 'https', get: (h) => (h === 'host' ? 'vip.example.com' : undefined) };
     const body = {
-      serverData: { vip_days: 30, server_name: 'S', vip_price: 100, vip_currency: 'INR' },
+      serverData: { tbl_name: 'sv_t', vip_days: 30, server_name: 'S', vip_price: 100, vip_currency: 'INR' },
       type: 'newPurchase', userFirstName: 'T', userEmail: 't@e.com', userMobile: '1',
     };
-    const r = await initPayUPaymentFunc(body, { id: '76561198092023766' }, 'k', req);
+    const r = await withServerRow(INR_ROW, () => initPayUPaymentFunc(body, { id: '76561198092023766' }, 'k', req));
     assert.strictEqual(r.udf5, '76561198092023766');
     assert.ok(!/STEAM_/.test(r.udf5), 'no legacy id leaks to payu');
     // Recompute the hash over the documented formula to prove consistency.

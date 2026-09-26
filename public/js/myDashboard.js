@@ -183,6 +183,9 @@ function fetchPBundleListajax() {
             "server_ip": "-",
             "server_port": "-",
             "server_name": dataArray[i].bundle_name,
+            // Must match the server-rendered payload: settlement looks the
+            // bundle up by this key to read our own price and currency.
+            "bundle_name": dataArray[i].bundle_name,
             "vip_price": dataArray[i].bundle_price,
             "vip_currency": dataArray[i].bundle_currency,
             "vip_days": dataArray[i].bundle_sub_days,
