@@ -91,7 +91,9 @@ function launchBOLT(payuObj, serverData, type) {
             "gateway": "payu",
             "payuData": BOLT.response
           };
-          if (giftU && giftU.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle')) {
+          // 'giftPurchase' arrives directly from owned-server gift buttons;
+          // the other buy types are upgraded here once gifting is on.
+          if (giftU && giftU.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle' || type === 'giftPurchase')) {
             payloadU.isGift = true;
             payloadU.recipientSteamId = giftU.recipientSteamId;
             if (type === 'newPurchase') payloadU.buyType = 'giftPurchase';

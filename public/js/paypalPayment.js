@@ -97,7 +97,7 @@ function setPayPalButton(id, serverData, type) {
           "buyType": type,
           "gateway": "paypal"
         };
-        if (gift && gift.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle')) {
+        if (gift && gift.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle' || type === 'giftPurchase')) {
           payload.isGift = true;
           payload.recipientSteamId = gift.recipientSteamId;
           if (type === 'newPurchase') payload.buyType = 'giftPurchase';

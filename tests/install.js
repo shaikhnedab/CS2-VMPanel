@@ -857,6 +857,35 @@ async function main() {
     assert.ok(!render(false).includes('vmpGiftToggle'), 'gift toggle hidden when disabled');
     assert.ok(render(undefined).includes('vmpGiftToggle'), 'gift toggle shown when flag absent (legacy)');
   });
+  await ok('every gateway forwards gifting, including owned-server gift buttons', () => {
+    // Owned-server cards emit buyType "giftPurchase" directly (no newPurchase
+    // upgrade step), so each gateway's guard must accept it or the VIP is
+    // silently granted to the buyer instead of the receiver.
+    for (const rel of ['public/js/paypalPayment.js', 'public/js/payU.js', 'public/js/razorPay.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      const guard = src.match(/if \(\w+ && \w+\.isGift && \(type === 'newPurchase'[^)]*\)\)/);
+      assert.ok(guard, `${rel} has a gifting guard`);
+      assert.ok(guard[0].includes("type === 'giftPurchase'"),
+        `${rel} guard accepts giftPurchase (got: ${guard[0]})`);
+      // The verified receiver must always ride along once gifting is on.
+      assert.ok(/\.isGift = true/.test(src), `${rel} sets isGift`);
+      assert.ok(/\.recipientSteamId = \w+\.recipientSteamId/.test(src), `${rel} forwards the verified recipient id`);
+    }
+    // The owned-server view must emit that buy type for each gateway.
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
+    assert.ok(/data-giftrequired="1"/.test(dash), 'owned cards mark gift-only controls');
+    assert.ok((dash.match(/data-buytype="giftPurchase"/g) || []).length >= 3,
+      'owned card offers a paypal slot + payu + razorpay gift control');
+  });
+  await ok('gifting is accepted server-side for all three gateways', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    assert.ok(/reqBody\.buyType === 'giftPurchase'/.test(src), 'giftPurchase is honoured server-side');
+    assert.ok(/is_gift: isGift \? 1 : 0/.test(src), 'sales record the gift flag');
+    assert.ok(/recipient_steamid: isGift \? recipientSteamId64 : null/.test(src), 'sales record the recipient');
+    // renew must never be reachable as a gift, and self-gifting must be refused.
+    assert.ok(/renewPurchase'\) return reject\("Gifts cannot renew/.test(src), 'gift renew refused');
+    assert.ok(/Recipient matches buyer/.test(src), 'self-gift refused');
+  });
   await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
     const crypto = require('crypto');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');

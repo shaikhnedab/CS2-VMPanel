@@ -101,7 +101,7 @@ const startRzpPayment = async (orderData, type) => {
         gateway: "razorpay",
         razorpayData: response
       };
-      if (giftR && giftR.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle')) {
+      if (giftR && giftR.isGift && (type === 'newPurchase' || type === 'newPurchaseBundle' || type === 'giftPurchase')) {
         payloadR.isGift = true;
         payloadR.recipientSteamId = giftR.recipientSteamId;
         if (type === 'newPurchase') payloadR.buyType = 'giftPurchase';
