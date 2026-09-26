@@ -181,18 +181,37 @@ function slotId(prefix, tblOrName, i) {
                     </div>
                     <div class="card-footer">
                       <%if(serverArray[i].vmpOwned){%>
-                      <%if(typeof giftingActive === 'undefined' || giftingActive){%>
+                      <%if(typeof giftingActive === 'undefined' || giftingActive){
+                          // Only offer gateways the admin actually configured, and
+                          // never leave an empty payment slot behind (it adds a
+                          // phantom row to the footer's grid).
+                          var ownedPayu = payuActive && panelSetting.platform_currency==="INR";
+                          var ownedRzp = razorpayActive && panelSetting.platform_currency==="INR";
+                          var ownedAny = paypalActive || ownedPayu || ownedRzp;
+                      %>
+                      <%if(ownedAny){%>
                       <p class="vmp-hint" style="margin:0 0 8px">You already hold VIP here. Turn on <strong>Gift this purchase</strong> above to buy VIP for someone else.</p>
+                      <%if(paypalActive){%>
                       <div class="vmp-paypal-slot" id="<%= slotId('gift', serverArray[i].tbl_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="giftPurchase" data-giftrequired="1"></div>
+                      <%}%>
+                      <%if(ownedPayu){%>
                       <button type="button" class="btn btn-info btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="giftPurchase" data-giftrequired="1" aria-label="Gift with PayU">
                         <img src="./images/payumoney.png" height="20" width="76" alt="PayU">
                       </button>
+                      <%}%>
+                      <%if(ownedRzp){%>
                       <button type="button" class="btn btn-info btn-block" data-checkout data-gateway="razorpay" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="giftPurchase" data-giftrequired="1" aria-label="Gift with Razorpay">
                         <img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay">
                       </button>
                       <%}%>
                       <%}else{%>
+                      <p class="vmp-hint" style="margin:0">No payment method is available right now — please contact an admin.</p>
+                      <%}%>
+                      <%}%>
+                      <%}else{%>
+                      <%if(paypalActive){%>
                       <div class="vmp-paypal-slot" id="<%= slotId('buy', serverArray[i].tbl_name, i) %>" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase"></div>
+                      <%}%>
                       <%if(payuActive && panelSetting.platform_currency==="INR"){%>
                       <button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="<%= encodeURIComponent(JSON.stringify(serverArray[i])) %>" data-buytype="newPurchase" aria-label="Buy with PayU">
                         <img src="./images/payumoney.png" height="20" width="76" alt="PayU">

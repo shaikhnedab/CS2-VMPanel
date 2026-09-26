@@ -886,6 +886,59 @@ async function main() {
     assert.ok(/renewPurchase'\) return reject\("Gifts cannot renew/.test(src), 'gift renew refused');
     assert.ok(/Recipient matches buyer/.test(src), 'self-gift refused');
   });
+  await ok('store only offers gateways the admin actually configured', () => {
+    const ejsMod = require('ejs');
+    const source = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8')
+      .replace(/<%-\s*include\('(?:Header|Footer)\.ejs'\)\s*%>/g, '');
+    const locals = (cur, payu, rzp, pp) => ({
+      panelSetting: { community_name: 'T', color_theme: 'primary', platform_currency: cur, community_logo_url: '' },
+      currentURL: '/mydashboard', csrfToken: 'x', sessionToken: null, adminType: 0,
+      sessionSteamId: '76561198092023766', adminName: null, steamName: 'Me',
+      userData: { steamId: '76561198092023766', displayname: 'Me', realName: '', avatarUrl: '' },
+      userDataListing: [{ servername: 'Mine', data: { authId: '76561198092023766', name: 'Me', expireStamp: 1792079631, type: 0 }, serverdata: { tbl_name: 'sv_t' } }],
+      // owned server: exercises the gift-only card
+      serverArray: [{ tbl_name: 'sv_t', server_name: 'Mine', vip_price: 30, vip_currency: 'INR', vip_days: 30, vmpOwned: true }],
+      bundleArray: [], payuEnv: 'test', payuMerchantId: 'x', colSpan: '12',
+      paypalActive: pp, paypalClientID: pp ? 'cid' : '', payuActive: payu, razorpayActive: rzp, giftingActive: true,
+    });
+    // Count only inside the store card so the membership table's renew buttons
+    // (which legitimately have their own controls) don't skew the result.
+    const cardSlice = (h) => h.slice(h.indexOf('vmp-product'), h.indexOf('id="serverBundles"'));
+    const n = (h, g) => (cardSlice(h).match(new RegExp(`data-gateway="${g}"`, 'g')) || []).length;
+    const slots = (h) => (cardSlice(h).match(/vmp-paypal-slot/g) || []).length;
+
+    // Razorpay not configured -> must not appear (the reported bug).
+    let h = ejsMod.render(source, locals('INR', true, false, false));
+    assert.strictEqual(n(h, 'payu'), 1, 'payu shown when configured');
+    assert.strictEqual(n(h, 'razorpay'), 0, 'razorpay hidden when not configured');
+    assert.strictEqual(slots(h), 0, 'no empty paypal slot when paypal is off');
+
+    h = ejsMod.render(source, locals('INR', false, true, false));
+    assert.strictEqual(n(h, 'razorpay'), 1, 'razorpay shown when configured');
+    assert.strictEqual(n(h, 'payu'), 0, 'payu hidden when not configured');
+
+    // INR-only gateways must not offer a button under a non-INR platform.
+    h = ejsMod.render(source, locals('USD', true, true, false));
+    assert.strictEqual(n(h, 'payu'), 0, 'payu hidden for non-INR platform');
+    assert.strictEqual(n(h, 'razorpay'), 0, 'razorpay hidden for non-INR platform');
+    assert.ok(cardSlice(h).includes('No payment method is available'), 'explains why nothing is buyable');
+
+    // Nothing configured at all.
+    h = ejsMod.render(source, locals('INR', false, false, false));
+    assert.strictEqual(n(h, 'payu') + n(h, 'razorpay'), 0, 'no buttons without config');
+    assert.ok(cardSlice(h).includes('No payment method is available'), 'no-method message shown');
+  });
+  await ok('product card body does not stretch and open a dead gap', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
+    // Bootstrap's .card-body is `flex: 1 1 auto`, which absorbs the card's slack
+    // and opens a gap under the last child. Pin it and let margin-top:auto
+    // bottom-align the footer instead.
+    assert.ok(/\.vmp-product \.card-body \{ flex: 0 0 auto; \}/.test(css), 'body pinned to content');
+    assert.ok(/\.vmp-product \.card-footer \{ margin-top: auto;/.test(css), 'footer still bottom-aligned');
+    const hdr = fs.readFileSync(path.join(__dirname, '..', 'views', 'Header.ejs'), 'utf8');
+    const v = (hdr.match(/vmp-design-system\.css\?v=(\d+)/) || [])[1];
+    assert.ok(v && Number(v) >= 20, `css cache-buster bumped (v=${v})`);
+  });
   await ok('payu init carries canonical 64-bit buyer id end to end', async () => {
     const crypto = require('crypto');
     const { initPayUPaymentFunc } = require('../app/controllers/payU');

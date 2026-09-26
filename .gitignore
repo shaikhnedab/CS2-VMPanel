@@ -5,3 +5,4 @@ VMPanel.log
 VMPanel.log.old
 .env
 .agents/
+scratch/
