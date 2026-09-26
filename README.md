@@ -20,7 +20,7 @@ notifications, audit logs and automatic VIP expiry.
 - **Servers & bundles** — multi-server VIP packages with slot, pricing and flag control
 - **Player store** — Steam login, owned-VIP status, buy or renew through PayPal, PayU or Razorpay
 - **VIP gifting** — gift a purchase to another account behind a server-verified receiver check
-- **Payments** — server-side price and signature re-verification, replay protection, buy/renew/gift order types
+- **Payments** — server-side price re-validation **plus real gateway verification** (Razorpay capture check, PayU reverse hash + verify_payment API, PayPal Orders API), fail-closed, replay protection, buy/renew/gift order types
 - **Discord** — sale notifications plus scheduled VIP/admin listing digests
 - **Audit logs & sales records** — super-admin only, paginated, quick-find filters
 - **Automation** — cron expiry cleanup, Discord digests, one-click RCON refresh
@@ -141,36 +141,64 @@ and an RCON failure never rolls back the VIP/admin database write — the toast 
 
 ### Payments — PayPal, PayU, Razorpay
 
-A gateway button only appears once that gateway is configured, and every amount is re-checked
-server-side (price, currency, signature where applicable) before a VIP is granted. Prices come from
-each server's VIP price or bundle.
+A gateway button only appears once that gateway is configured **and can be verified server-side**.
+Every payment is confirmed with the gateway itself before a VIP is granted — see
+[Payment verification](#payment-verification) below.
 
-Set **Platform Currency** (`USD` or `INR`) in Panel Settings first. PayU and Razorpay require `INR`;
-PayPal works in any currency as long as its Client ID is set. VIP gifting is on by default — set
-`GIFTING_ENABLED=false` (or `"gifting": { "enabled": false }` in `config.json`) to remove the gift
-option and refuse gift purchases.
+**Currencies.** Each server and bundle carries its own currency, editable in Panel Settings; the
+panel's **Platform Currency** is only the default for new rows. PayU is PayU *India* and settles
+**INR** only, so it is offered on INR-priced servers exclusively. Razorpay supports 160+ currencies
+on Checkout via International Payments (settlement still lands as INR), and PayPal is
+multi-currency, so both follow the row's currency.
+
+VIP gifting is on by default — set `GIFTING_ENABLED=false` (or `"gifting": { "enabled": false }` in
+`config.json`) to remove the gift option and refuse gift purchases.
 
 **PayPal** — [developer.paypal.com](https://developer.paypal.com) → Dashboard → Apps & Credentials →
-create a REST app (sandbox = test money, live = real money). Copy the **Client ID** into
-`config.json` → `payment_gateways.paypal.paypal_client_id` (or the `PAYPAL_CLIENT_ID` env var,
-which wins), recreate the container, and test with a sandbox buyer before swapping in the live ID.
+create a REST app (sandbox = test money, live = real money). Copy **both** the **Client ID** *and* the
+**Client Secret** into `config.json` → `payment_gateways.paypal` (or the `PAYPAL_CLIENT_ID` /
+`PAYPAL_CLIENT_SECRET` env vars, which win). The secret is not optional: without it the panel cannot
+call the Orders API to confirm a payment, so it will not offer PayPal at all. Recreate the container
+and test with a sandbox buyer before swapping in live credentials.
 
 **PayU** (INR only) — copy the **paired** Test Key + Salt from the PayU dashboard (a test key with a
 live salt fails the hash check) into `config.json` → `payment_gateways.payU` with
 `"environment": "test"`, or use the `PAYU_*` env vars. Checkout opens purple in test and green in
 live; go live with `PAYU_ENV=live` plus the live pair.
 
-**Razorpay** (INR only) — generate a **Test** pair (`rzp_test_…`) in Dashboard → Settings → API Keys
-into `config.json` → `payment_gateways.razorPay`. Test mode follows the key prefix, not
-`RAZORPAY_ENV`. Go live by swapping in the `rzp_live_…` pair.
+**Razorpay** — generate a **Test** pair (`rzp_test_…`) in Dashboard → Settings → API Keys into
+`config.json` → `payment_gateways.razorPay`. Both `keyId` **and** `keySecret` are required, the secret
+because the panel fetches the payment from Razorpay to confirm it was captured. Test mode follows the
+key prefix, not `RAZORPAY_ENV`. Go live by swapping in the `rzp_live_…` pair. Amounts are sent in the
+currency's own smallest sub-unit (2 decimals for INR/USD, 0 for JPY, 3 for KWD).
 
 Return URLs follow `PUBLIC_BASE_URL` when set, otherwise the address the buyer used (HTTPS-aware
 behind a proxy) — so the panel must be publicly reachable or test payments cannot return.
 
+#### Payment verification
+
+`/execafterpaymentprocess` used to trust whatever the browser posted, so anyone could craft
+`{ "status": "SUCCESS" }` and receive a free VIP. Verification is now **fail-closed** and happens
+*before* any VIP row is written:
+
+| Gateway | What is checked |
+|---|---|
+| Razorpay | `razorpay_payment_signature` = HMAC-SHA256(`order_id\|payment_id`, `keySecret`), **then** the payment is fetched from Razorpay and must be `captured` with our exact amount and currency |
+| PayU | Reverse hash `sha512(SALT\|status\|\|\|\|\|\|udf5\|udf4\|udf3\|udf2\|udf1\|email\|firstname\|productinfo\|amount\|txnid\|key)`, **then** the `verify_payment` API must report the transaction successful with our amount |
+| PayPal | OAuth token from the client id+secret, then the order is captured if needed and must be `COMPLETED` with our amount and currency |
+
+A gateway whose credentials are incomplete is hidden from the store rather than sold blind, and the
+sales record stores the gateway's verified order id, amount and currency — never the browser's copy.
+
+`VERIFY_PAYMENTS=false` (or `"verify_payments": false`) restores the old trust-the-browser behaviour.
+It is for local debugging only and is logged as a warning on every purchase — leave it on in
+production.
+
 | Symptom | Check |
 |---|---|
-| Button missing | Gateway enabled? PayPal Client ID present? Currency matches (`INR` for PayU/Razorpay)? Container recreated after the edit? |
+| Button missing | Gateway enabled? **All** its secrets present (PayU key+salt, Razorpay id+secret, PayPal id+secret)? Row currency `INR` for PayU? Container recreated after the edit? |
 | Checkout fails | Wrong-mode credentials — a test key on live checkout, or vice versa |
+| "Could not confirm the payment with …" | The gateway API was unreachable or returned an error. The buyer may well have been charged — reconcile with the gateway before re-enabling |
 
 ## Environment
 
@@ -187,7 +215,8 @@ Every value can live in `config.json`; the matching environment variable always 
 | `PUBLIC_BASE_URL` | no | Canonical public address for Steam login callbacks. Asked by the wizard; empty = auto-detect per request |
 | `CONFIG_PATH` | no | Config file location (default `app/config/config.json`) |
 | `GIFTING_ENABLED` | no | `false` disables VIP gifting (default `true`) |
-| `PAYPAL_CLIENT_ID` | for PayPal | PayPal REST client ID |
+| `PAYPAL_CLIENT_ID` `PAYPAL_CLIENT_SECRET` `PAYPAL_ENV` | for PayPal | PayPal REST credentials. **The secret is required** — without it payments cannot be verified and PayPal is hidden |
+| `VERIFY_PAYMENTS` | no | `false` disables server-side payment verification (debugging only — anyone can then forge a payment) |
 | `PAYU_ENABLED` `PAYU_ENV` `PAYU_MERCHANT_KEY` `PAYU_MERCHANT_SALT` | for PayU | PayU gateway |
 | `RAZORPAY_ENABLED` `RAZORPAY_ENV` `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` | for Razorpay | Razorpay gateway |
 | `SCHEDULE_DELETE_HOURS` `SCHEDULE_NOTIF_HOURS` | no | Cron intervals for expiry cleanup / Discord digests |

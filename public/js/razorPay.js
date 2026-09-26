@@ -88,10 +88,21 @@ const startRzpPayment = async (orderData, type) => {
         payer_name: serverData.userFirstName,
         payer_surname: " ",
         product_desc: notes.productInfo,
-        amount_paid: amount_due / 100.0,
+        // amount_due is already in the currency's smallest sub-unit; convert
+        // back with that currency's exponent rather than assuming 2 decimals.
+        amount_paid: amount_due / Math.pow(10, (window.vmpCurrencyExponent ? window.vmpCurrencyExponent(currency) : 2)),
         amount_currency: currency,
         status: response.razorpay_payment_id && "success"
       };
+      // Razorpay signs order_id|payment_id with the key secret and returns the
+      // result as razorpay_payment_signature. The server verifies it (and then
+      // confirms capture with Razorpay's API), so forward it untouched. The old
+      // server code looked for a "razorpay_signature" field that never existed,
+      // which rejected every real payment.
+      responseObject.razorpay_payment_id = response.razorpay_payment_id;
+      responseObject.razorpay_order_id = response.razorpay_order_id;
+      responseObject.razorpay_payment_signature = response.razorpay_payment_signature;
+      responseObject.razorpay_signature = response.razorpay_payment_signature;
       var giftR = (typeof vmpGetGiftFields === 'function') ? vmpGetGiftFields() : null;
       if (giftR === null) return;
       var payloadR = {

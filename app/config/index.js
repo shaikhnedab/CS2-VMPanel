@@ -76,7 +76,13 @@ config.gifting = {
 
 const pg = rawConfig.payment_gateways || {};
 config.payment_gateways = {
-  paypal: { paypal_client_id: process.env.PAYPAL_CLIENT_ID || (pg.paypal && pg.paypal.paypal_client_id) || '' },
+  // The client secret is what makes server-side order verification possible;
+  // without it the panel cannot confirm a PayPal payment and must not offer it.
+  paypal: {
+    paypal_client_id: process.env.PAYPAL_CLIENT_ID || (pg.paypal && pg.paypal.paypal_client_id) || '',
+    paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || (pg.paypal && pg.paypal.paypal_client_secret) || '',
+    environment: process.env.PAYPAL_ENV || (pg.paypal && pg.paypal.environment) || 'test',
+  },
   payU: {
     enabled: envBool(process.env.PAYU_ENABLED, pg.payU && (pg.payU.enabled === true || pg.payU.enabled === 'true')),
     environment: process.env.PAYU_ENV || (pg.payU && pg.payU.environment) || 'test',
@@ -90,6 +96,10 @@ config.payment_gateways = {
     keySecret: process.env.RAZORPAY_KEY_SECRET || (pg.razorPay && pg.razorPay.keySecret) || '',
   },
 };
+// Fail-closed payment verification. Turning this off restores the old
+// trust-the-browser behaviour and is only for debugging; it is logged loudly
+// at startup because it lets anyone mint a VIP by forging a request.
+config.verify_payments = envBool(process.env.VERIFY_PAYMENTS, (rawConfig.verify_payments !== false));
 config.logging = { logLevel: process.env.LOG_LEVEL || (rawConfig.logging && rawConfig.logging.logLevel) || 'INFO' };
 
 function dotenvPath() {  return process.env.DOTENV_PATH || path.join(__dirname, '..', '..', '.env');
@@ -175,7 +185,13 @@ function applyEnv(cfg) {
   };
   const pg = rc.payment_gateways || {};
   cfg.payment_gateways = {
-    paypal: { paypal_client_id: process.env.PAYPAL_CLIENT_ID || (pg.paypal && pg.paypal.paypal_client_id) || '' },
+    // The client secret is what makes server-side order verification possible;
+    // without it the panel cannot confirm a PayPal payment and must not offer it.
+    paypal: {
+      paypal_client_id: process.env.PAYPAL_CLIENT_ID || (pg.paypal && pg.paypal.paypal_client_id) || '',
+      paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || (pg.paypal && pg.paypal.paypal_client_secret) || '',
+      environment: process.env.PAYPAL_ENV || (pg.paypal && pg.paypal.environment) || 'test',
+    },
     payU: {
       enabled: envBool(process.env.PAYU_ENABLED, pg.payU && (pg.payU.enabled === true || pg.payU.enabled === 'true')),
       environment: process.env.PAYU_ENV || (pg.payU && pg.payU.environment) || 'test',
@@ -189,6 +205,7 @@ function applyEnv(cfg) {
       keySecret: process.env.RAZORPAY_KEY_SECRET || (pg.razorPay && pg.razorPay.keySecret) || '',
     },
   };
+  cfg.verify_payments = envBool(process.env.VERIFY_PAYMENTS, (rc.verify_payments !== false));
   cfg.logging = { logLevel: process.env.LOG_LEVEL || (rc.logging && rc.logging.logLevel) || 'INFO' };
   return cfg;
 }

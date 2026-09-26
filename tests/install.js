@@ -944,6 +944,158 @@ async function main() {
     const v = (hdr.match(/vmp-design-system\.css\?v=(\d+)/) || [])[1];
     assert.ok(v && Number(v) >= 20, `css cache-buster bumped (v=${v})`);
   });
+  await ok('payu hashes match the documented PayU formulas', () => {
+    const crypto = require('crypto');
+    const pv = require('../app/modules/paymentVerify');
+    const cfg = { merchantKey: 'EnoEUc', merchantSalt: 'SALT123' };
+    const sha512 = (t) => crypto.createHash('sha512').update(t).digest('hex');
+
+    // Reverse hash, exactly as docs.payu.in documents it:
+    //   sha512(SALT|status||||||udf5|udf4|udf3|udf2|udf1|email|firstname|productinfo|amount|txnid|key)
+    const r = { status: 'SUCCESS', udf1: '', udf2: '', udf3: '', udf4: '', udf5: '76561198092023766', email: 'a@e.com', firstname: 'A', productinfo: '30 days VIP', amount: '30.00', txnid: 'TXN1' };
+    const literal = 'SALT123|SUCCESS||||||76561198092023766|||||a@e.com|A|30 days VIP|30.00|TXN1|EnoEUc';
+    assert.strictEqual(pv.payuReverseHash(cfg, r), sha512(literal), 'reverse hash matches the documented field order');
+    // 6 pipes after status, and udf5..udf1 present - the old implementation had
+    // 5 pipes and a single udf, so it rejected every genuine PayU response.
+    assert.ok(literal.indexOf('SUCCESS||||||') > 0, 'six separators after status, per the docs');
+    assert.ok(literal.indexOf('|udf') === -1, 'literal form carries the udf values inline');
+
+    // General command API: sha512(key|command|var1|salt)
+    assert.strictEqual(pv.payuCommandHash(cfg, 'verify_payment', 'TXN1'), sha512('EnoEUc|verify_payment|TXN1|SALT123'));
+    // Endpoints per environment, from the Verify Payment API reference.
+    assert.ok(pv.payuPostservice('test').startsWith('https://test.payu.in/'), 'test endpoint');
+    assert.ok(pv.payuPostservice('live').startsWith('https://info.payu.in/'), 'live endpoint');
+    assert.ok(pv.payuPostservice('live').includes('form=2'), 'form=2 for JSON responses');
+  });
+  await ok('amount comparison tolerates major/minor unit reporting', () => {
+    const { amountMatches } = require('../app/modules/paymentVerify');
+    // Gateways report "30", "30.00" or 3000 (minor units) for the same 30 INR.
+    assert.ok(amountMatches(30, 30, 'INR'));
+    assert.ok(amountMatches('30.00', 30, 'INR'));
+    assert.ok(amountMatches(3000, 30, 'INR'));
+    assert.ok(amountMatches('3000', 30, 'INR'));
+    assert.ok(!amountMatches(31, 30, 'INR'), 'a different amount is rejected');
+    assert.ok(!amountMatches(29.99, 30, 'INR'));
+    assert.ok(!amountMatches('abc', 30, 'INR'));
+    // Zero-decimal currency: 99 JPY is 99, not 9900.
+    assert.ok(amountMatches(99, 99, 'JPY'));
+    assert.ok(!amountMatches(9900, 99, 'JPY'));
+  });
+  await ok('canVerify requires the credentials verification actually needs', () => {
+    const pv = require('../app/modules/paymentVerify');
+    assert.strictEqual(pv.canVerify('razorpay', { razorPay: { enabled: true, keyId: 'k', keySecret: 's' } }), true);
+    assert.strictEqual(pv.canVerify('razorpay', { razorPay: { enabled: true, keyId: 'k', keySecret: '' } }), false, 'key secret required');
+    assert.strictEqual(pv.canVerify('razorpay', { razorPay: { enabled: false, keyId: 'k', keySecret: 's' } }), false, 'disabled');
+    assert.strictEqual(pv.canVerify('payu', { payU: { enabled: true, merchantKey: 'k', merchantSalt: 's' } }), true);
+    assert.strictEqual(pv.canVerify('payu', { payU: { enabled: true, merchantKey: 'k', merchantSalt: '' } }), false, 'salt required');
+    // PayPal needs a client SECRET, not just the id used by the browser SDK.
+    assert.strictEqual(pv.canVerify('paypal', { paypal: { paypal_client_id: 'id', paypal_client_secret: 'sec' } }), true);
+    assert.strictEqual(pv.canVerify('paypal', { paypal: { paypal_client_id: 'id', paypal_client_secret: '' } }), false,
+      'a client id alone cannot verify payments');
+    assert.strictEqual(pv.canVerify('stripe', {}), false, 'unknown gateway is never verifiable');
+  });
+  await ok('forged payments are rejected before any VIP is granted', async () => {
+    const pv = require('../app/modules/paymentVerify');
+    const payuCfg = { payU: { enabled: true, environment: 'test', merchantKey: 'K', merchantSalt: 'S' } };
+    const rzCfg = { razorPay: { enabled: true, environment: 'test', keyId: 'rk', keySecret: 'rs' } };
+    const ppCfg = { paypal: { paypal_client_id: 'id', paypal_client_secret: 'sec', environment: 'test' } };
+    const expected = { amount: 30, currency: 'INR' };
+
+    // A hand-crafted "SUCCESS" with no gateway evidence at all.
+    let r = await pv.verifyPayment({ gateway: 'payu', reqBody: { payuData: { txnid: 'X', status: 'SUCCESS' } }, expected, cfg: payuCfg });
+    assert.strictEqual(r.ok, false, 'payu: missing reverse hash rejected');
+    // Wrong hash.
+    r = await pv.verifyPayment({
+      gateway: 'payu',
+      reqBody: { payuData: { txnid: 'X', status: 'SUCCESS', hash: 'deadbeef', udf5: '', email: '', firstname: '', productinfo: '', amount: '30.00' } },
+      expected, cfg: payuCfg,
+    });
+    assert.strictEqual(r.ok, false, 'payu: wrong reverse hash rejected');
+    // Correctly hashed but not SUCCESS.
+    const good = { txnid: 'X', status: 'FAILED', udf1: '', udf2: '', udf3: '', udf4: '', udf5: '', email: 'a@e.com', firstname: 'A', productinfo: 'p', amount: '30.00' };
+    r = await pv.verifyPayment({ gateway: 'payu', reqBody: { payuData: { ...good, hash: pv.payuReverseHash(payuCfg.payU, good) } }, expected, cfg: payuCfg });
+    assert.strictEqual(r.ok, false, 'payu: a hashed FAILED status is still rejected');
+
+    // Razorpay: no signature, then a wrong signature. Both must fail before the
+    // network call, so this test never touches Razorpay.
+    r = await pv.verifyPayment({ gateway: 'razorpay', reqBody: { razorpayData: { razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1' } }, expected, cfg: rzCfg });
+    assert.strictEqual(r.ok, false, 'razorpay: missing signature rejected');
+    r = await pv.verifyPayment({ gateway: 'razorpay', reqBody: { razorpayData: { razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1', razorpay_payment_signature: 'nope' } }, expected, cfg: rzCfg });
+    assert.strictEqual(r.ok, false, 'razorpay: wrong signature rejected');
+
+    // PayPal without a secret must refuse rather than trust the browser.
+    r = await pv.verifyPayment({ gateway: 'paypal', reqBody: { paymentData: { id: 'ORDER1', status: 'COMPLETED' } }, expected, cfg: { paypal: { paypal_client_id: 'id', paypal_client_secret: '' } } });
+    assert.strictEqual(r.ok, false, 'paypal: no client secret means no verification, so refuse');
+    assert.ok(/client secret/i.test(r.reason), 'and say why');
+
+    // Unconfigured gateway entirely.
+    r = await pv.verifyPayment({ gateway: 'payu', reqBody: {}, expected, cfg: { payU: { enabled: true, merchantKey: '', merchantSalt: '' } } });
+    assert.strictEqual(r.ok, false, 'unconfigured payu refused');
+    // Unknown gateway.
+    r = await pv.verifyPayment({ gateway: 'stripe', reqBody: {}, expected, cfg: {} });
+    assert.strictEqual(r.ok, false, 'unknown gateway refused');
+    // A bad expected amount must not slip through.
+    r = await pv.verifyPayment({ gateway: 'payu', reqBody: {}, expected: { amount: 'x', currency: 'INR' }, cfg: payuCfg });
+    assert.strictEqual(r.ok, false, 'unresolvable expected amount refused');
+    // A forged client status must never be enough on its own.
+    r = await pv.verifyPayment({ gateway: 'payu', reqBody: { paymentData: { status: 'SUCCESS', order_id: 'made-up' } }, expected, cfg: payuCfg });
+    assert.strictEqual(r.ok, false, 'a browser-asserted SUCCESS alone is not a payment');
+  });
+  await ok('settlement verifies with the gateway and fails closed', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // The verification must gate the grant, and run before the VIP insert.
+    assert.ok(/verifyPayment\(\{ gateway: reqBody\.gateway, reqBody, expected \}\)/.test(ud), 'verification is called');
+    const vIdx = ud.indexOf('await verifyPayment(');
+    const insertIdx = ud.indexOf('await vipModel.insertVIPData');
+    assert.ok(vIdx > 0 && insertIdx > 0 && vIdx < insertIdx, 'verification happens before the VIP row is written');
+    assert.ok(/if \(!verdict\.ok\)/.test(ud), 'a failed verdict rejects');
+    // The hand-rolled hash blocks that were wrong must be gone.
+    assert.ok(!/reverseKeyArray/.test(ud), 'the incorrect PayU reverse-hash block is gone');
+    assert.ok(!/rzp\.razorpay_signature \|\|/.test(ud), 'the incorrect Razorpay signature check is gone');
+    // Config toggle defaults to on.
+    const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'config', 'index.js'), 'utf8');
+    assert.ok(/verify_payments = envBool\(process\.env\.VERIFY_PAYMENTS, \(\w+\.verify_payments !== false\)\)/.test(cfgSrc),
+      'verification defaults to enabled (fail closed)');
+  });
+  await ok('store hides gateways that cannot be verified', async () => {
+    const dbBridge = require('../app/db/db_bridge');
+    const origQuery = dbBridge.query;
+    dbBridge.query = async (sql) => {
+      const q = String(sql).replace(/\s+/g, ' ');
+      if (/COUNT\(authId\)/i.test(q)) return { usercount: '0' };
+      if (/FROM `?tbl_servers`?/i.test(q)) return [{ tbl_name: 'sv_t', server_name: 'Mine', server_ip: '', server_port: '', vip_slots: 10, vip_price: 30, vip_currency: 'INR', vip_days: 30 }];
+      if (/FROM `?sv_t`?\b/i.test(q)) return [];
+      return [];
+    };
+    const config = require('../app/config');
+    const saved = JSON.parse(JSON.stringify(config.payment_gateways));
+    const savedVerify = config.verify_payments;
+    try {
+      const { myDashboardFunc } = require('../app/controllers/userDashboard');
+      // Razorpay enabled but with no key secret -> must not be offered.
+      Object.assign(config.payment_gateways, {
+        payU: { enabled: true, environment: 'test', merchantKey: 'k', merchantSalt: 's' },
+        razorPay: { enabled: true, environment: 'test', keyId: 'k', keySecret: '' },
+        paypal: { paypal_client_id: 'cid', paypal_client_secret: '' },
+      });
+      config.verify_payments = true;
+      let r = await myDashboardFunc({}, { id: '76561198092023766', displayName: 'Me' });
+      assert.strictEqual(r.razorpayActive, false, 'razorpay hidden without a key secret');
+      assert.strictEqual(r.paypalActive, false, 'paypal hidden without a client secret');
+      assert.strictEqual(r.payuActive, true, 'payu shown: it is fully configured');
+
+      // With credentials present they come back.
+      config.payment_gateways.razorPay.keySecret = 'rs';
+      config.payment_gateways.paypal.paypal_client_secret = 'sec';
+      r = await myDashboardFunc({}, { id: '76561198092023766', displayName: 'Me' });
+      assert.strictEqual(r.razorpayActive, true, 'razorpay shown once verifiable');
+      assert.strictEqual(r.paypalActive, true, 'paypal shown once verifiable');
+    } finally {
+      Object.assign(config.payment_gateways, saved);
+      config.verify_payments = savedVerify;
+      dbBridge.query = origQuery;
+    }
+  });
   await ok('payment scripts are cache-busted', () => {
     // These carry gateway + currency logic; an unversioned <script> lets a
     // browser keep serving a stale copy and silently mask the fix.
@@ -965,16 +1117,41 @@ async function main() {
     assert.strictEqual(await resolveRowCurrency({ vip_currency: 'USD' }, 'INR'), 'USD');
     assert.strictEqual(normalizeCurrency(' inr '), 'INR');
     assert.strictEqual(normalizeCurrency('INRXX'), null);
-    assert.ok(isInrOnlyGateway('razorpay') && isInrOnlyGateway('PAYU') && !isInrOnlyGateway('paypal'));
+    // PayU India settles INR only. Razorpay is NOT INR-only: it supports 160+
+    // currencies on Checkout via International Payments, so it must accept the
+    // row's own currency. Treating it as INR-only was outdated and needlessly
+    // blocked multi-currency sellers.
+    assert.ok(isInrOnlyGateway('payu') && isInrOnlyGateway('PAYU'));
+    assert.ok(!isInrOnlyGateway('razorpay'), 'razorpay is not INR-only');
+    assert.ok(!isInrOnlyGateway('paypal'));
 
-    // India-only gateways can only settle INR; PayPal takes either.
-    assert.strictEqual(gatewaySupportsCurrency('razorpay', 'INR'), true);
-    assert.strictEqual(gatewaySupportsCurrency('razorpay', 'USD'), false);
+    assert.strictEqual(gatewaySupportsCurrency('payu', 'INR'), true);
     assert.strictEqual(gatewaySupportsCurrency('payu', 'USD'), false);
+    assert.strictEqual(gatewaySupportsCurrency('razorpay', 'INR'), true);
+    assert.strictEqual(gatewaySupportsCurrency('razorpay', 'USD'), true, 'razorpay accepts USD per its international payments docs');
     assert.strictEqual(gatewaySupportsCurrency('paypal', 'USD'), true);
     assert.strictEqual(gatewaySupportsCurrency('paypal', 'INR'), true);
     assert.strictEqual(gatewaySupportsCurrency('paypal', 'JPY'), false, 'unsupported currency refused');
-    assert.ok(/only charge in INR/.test(unsupportedCurrencyMessage('razorpay', 'USD')));
+    assert.ok(/only charge in INR/.test(unsupportedCurrencyMessage('payu', 'USD')));
+    assert.ok(/PayU/.test(unsupportedCurrencyMessage('payu', 'USD')));
+  });
+  await ok('minor-unit conversion respects the currency exponent', () => {
+    const { minorUnitExponent, toMinorUnits, fromMinorUnits, formatAmount } = require('../app/utils/currency');
+    assert.strictEqual(minorUnitExponent('INR'), 2);
+    assert.strictEqual(minorUnitExponent('USD'), 2);
+    assert.strictEqual(minorUnitExponent('JPY'), 0, 'zero-decimal currency');
+    assert.strictEqual(minorUnitExponent('KWD'), 3, 'three-decimal currency');
+    assert.strictEqual(minorUnitExponent('ZZZ'), 2, 'unknown defaults to 2');
+    assert.strictEqual(toMinorUnits(30, 'INR'), 3000);
+    assert.strictEqual(toMinorUnits(30, 'JPY'), 30, 'JPY 30 yen, not 3000');
+    assert.strictEqual(toMinorUnits(99.999, 'KWD'), 99999);
+    assert.strictEqual(fromMinorUnits(3000, 'INR'), 30);
+    assert.strictEqual(fromMinorUnits(30, 'JPY'), 30);
+    assert.strictEqual(formatAmount(30, 'INR'), '30.00', 'PayU hashes a fixed 2-decimal string');
+    assert.strictEqual(formatAmount(30, 'JPY'), '30');
+    assert.throws(() => toMinorUnits('abc', 'INR'), TypeError);
+    // A hardcoded *100 is the bug this replaces.
+    assert.notStrictEqual(toMinorUnits(30, 'JPY'), 30 * 100);
   });
   await ok('per-server currency: admin can set it, and it actually saves', () => {
     const set = fs.readFileSync(path.join(__dirname, '..', 'views', 'PanelSetting.ejs'), 'utf8');
@@ -1045,7 +1222,7 @@ async function main() {
     const mk = (cur) => ({ serverData: { server_name: 'S', vip_price: 30, vip_currency: cur, vip_days: 30 }, type: 'newPurchase', userFirstName: 'A', userEmail: 'a@e.com', userMobile: '1' });
     await assert.rejects(() => initPayUPaymentFunc(mk('USD'), { id: '76561198092023766' }, 'k', req), /only charge in INR/);
     const ok = await initPayUPaymentFunc(mk('INR'), { id: '76561198092023766' }, 'k', req);
-    assert.strictEqual(ok.amount, 30, 'INR server still transacts normally');
+    assert.strictEqual(ok.amount, '30.00', 'INR server still transacts, amount fixed to 2 decimals');
 
     const rz = require('../app/controllers/razorPay.js');
     const call = (body) => new Promise((resolve) => {
@@ -1110,7 +1287,8 @@ async function main() {
     assert.strictEqual(r.udf5, '76561198092023766');
     assert.ok(!/STEAM_/.test(r.udf5), 'no legacy id leaks to payu');
     // Recompute the hash over the documented formula to prove consistency.
-    const text = `${r.key}|${r.txnid}|100|30 days VIP for S (New Buy)|T|t@e.com|||||76561198092023766||||||`;
+    // The hashed amount must be the same fixed-2-decimal string sent in the form.
+    const text = `${r.key}|${r.txnid}|100.00|30 days VIP for S (New Buy)|T|t@e.com|||||76561198092023766||||||`;
     const expect = crypto.createHash('sha512').update(text + require('../app/config').payment_gateways.payU.merchantSalt).digest('hex');
     assert.strictEqual(r.hash, expect);
   });

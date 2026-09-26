@@ -60,6 +60,16 @@ function slotId(prefix, tblOrName, i) {
     if (gateway === 'payu' || gateway === 'razorpay') return cur === 'INR';
     return true;
   };
+  // Decimal places of the currency's smallest sub-unit, so the client can
+  // convert an amount_due back to major units without assuming 2 decimals.
+  window.vmpCurrencyExponent = function (currency) {
+    var zero = ['BIF','CLP','DJF','GNF','ISK','JPY','KMF','KRW','PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF'];
+    var three = ['BHD','IQD','JOD','KWD','OMR','TND'];
+    var cur = String(currency || '').toUpperCase();
+    if (zero.indexOf(cur) !== -1) return 0;
+    if (three.indexOf(cur) !== -1) return 3;
+    return 2;
+  };
 </script>
 <%if(paypalActive){%>
 <script defer

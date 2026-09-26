@@ -1,6 +1,6 @@
 'use strict';
 
-// Minimal JSON/text HTTP client on Node's built-in https.
+// Minimal HTTP client on Node's built-in https/http.
 //
 // Deliberately not needle: needle's params-object request form
 // (needle.get(url, {...params}, opts, cb)) throws a SYNCHRONOUS
@@ -9,9 +9,10 @@
 // callback/promise chain exists, neither try/catch nor .catch() sees it —
 // it escapes as an uncaught exception and takes the whole process down.
 // Verified locally: that exact call form crashes 6/6, while
-// needle('get', fullUrl, opts) succeeds 6/6. This helper takes the proven
-// path (query string + built-in https) and adds a hard wall-clock timeout
-// so no Steam call can hang a request.
+// needle('get', fullUrl, opts) succeeds 6/6.
+//
+// Every request here is bounded by a hard wall-clock timeout, so no outbound
+// call (Steam, PayPal, Razorpay, PayU) can hang a request handler.
 
 const https = require('https');
 const http = require('http');
@@ -44,14 +45,29 @@ function parseBody(text, contentType) {
 }
 
 /**
- * GET a URL and resolve { statusCode, headers, body }. Never rejects on
- * transport/HTTP failure — errors are reported via `ok: false` + `error`.
- * Only a bad argument rejects.
+ * Issue a request and resolve { ok, statusCode, headers, body, error }.
+ * Never rejects on transport/HTTP failure — failures are reported via
+ * `ok: false` + `error`. Only a bad argument rejects.
+ *
+ * @param {string} rawUrl
+ * @param {object} [opts]
+ * @param {'GET'|'POST'} [opts.method='GET']
+ * @param {object} [opts.params] query string values (GET)
+ * @param {object} [opts.form]  application/x-www-form-urlencoded body (POST)
+ * @param {*} [opts.json] JSON body (POST)
+ * @param {object} [opts.headers]
+ * @param {number} [opts.timeout=8000]
+ * @param {number} [opts.redirects=2] 0 disables redirect following (POST-safe)
  */
-function httpGet(rawUrl, { params, timeout = DEFAULT_TIMEOUT_MS, headers, redirects = 2 } = {}) {
+function request(rawUrl, opts = {}) {
+  const {
+    method = 'GET', params, form, json, headers = {},
+    timeout = DEFAULT_TIMEOUT_MS, redirects = 2,
+  } = opts;
+
   return new Promise((resolve, reject) => {
     if (!rawUrl || typeof rawUrl !== 'string') {
-      return reject(new TypeError('httpGet requires a URL string'));
+      return reject(new TypeError('request requires a URL string'));
     }
     let parsed;
     try {
@@ -63,6 +79,26 @@ function httpGet(rawUrl, { params, timeout = DEFAULT_TIMEOUT_MS, headers, redire
       return reject(new TypeError(`Unsupported protocol: ${parsed.protocol}`));
     }
 
+    // Build the body once; it is replayed verbatim on each hop.
+    let payload = null;
+    const outHeaders = { 'User-Agent': 'CS2-VMPanel/2.0', ...headers };
+    if (form !== undefined && form !== null) {
+      payload = new URLSearchParams();
+      for (const [k, v] of Object.entries(form)) {
+        if (v === undefined || v === null) continue;
+        payload.append(k, String(v));
+      }
+      payload = payload.toString();
+      outHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
+    } else if (json !== undefined) {
+      payload = JSON.stringify(json);
+      outHeaders['Content-Type'] = 'application/json';
+    }
+    if (payload !== null) {
+      outHeaders['Content-Length'] = Buffer.byteLength(payload);
+    }
+
+    const upper = String(method).toUpperCase();
     const send = (target, hopsLeft) => {
       // Re-parse per hop: target is a string, and redirects may switch scheme.
       let u;
@@ -77,11 +113,13 @@ function httpGet(rawUrl, { params, timeout = DEFAULT_TIMEOUT_MS, headers, redire
 
       const req = lib.request(
         u,
-        { method: 'GET', headers: { 'User-Agent': 'CS2-VMPanel/2.0', ...(headers || {}) } },
+        { method: upper, headers: outHeaders },
         (res) => {
           const status = res.statusCode || 0;
           // Bounded redirect following (Steam occasionally redirects XML calls).
-          if (status >= 300 && status < 400 && res.headers.location && hopsLeft > 0) {
+          // Never replay a POST body across a redirect: it may have been
+          // consumed, and gateway APIs do not redirect.
+          if (status >= 300 && status < 400 && res.headers.location && hopsLeft > 0 && upper === 'GET') {
             res.resume();
             let nextUrl;
             try { nextUrl = new URL(res.headers.location, u).toString(); } catch (e) { return fail('Bad redirect'); }
@@ -110,11 +148,34 @@ function httpGet(rawUrl, { params, timeout = DEFAULT_TIMEOUT_MS, headers, redire
 
       req.setTimeout(timeout, () => { req.destroy(); fail(`Timed out after ${timeout}ms`); });
       req.on('error', (e) => fail(e.code || e.message));
+      if (payload !== null) req.write(payload);
       req.end();
     };
 
-    send(parsed.toString() + buildQuery(params), redirects);
+    send(upper === 'GET' ? parsed.toString() + buildQuery(params) : parsed.toString(), redirects);
   });
 }
 
-module.exports = { httpGet, DEFAULT_TIMEOUT_MS };
+/** GET helper. */
+function httpGet(rawUrl, opts = {}) {
+  return request(rawUrl, { ...opts, method: 'GET' });
+}
+
+/** POST helper. */
+function httpPost(rawUrl, opts = {}) {
+  return request(rawUrl, { ...opts, method: 'POST' });
+}
+
+/** POST application/x-www-form-urlencoded. */
+function httpPostForm(rawUrl, form, opts = {}) {
+  return request(rawUrl, { ...opts, method: 'POST', form });
+}
+
+/** POST application/json. */
+function httpPostJson(rawUrl, json, opts = {}) {
+  return request(rawUrl, { ...opts, method: 'POST', json });
+}
+
+module.exports = {
+  request, httpGet, httpPost, httpPostForm, httpPostJson, DEFAULT_TIMEOUT_MS,
+};

@@ -26,7 +26,27 @@ const SUPPORTED_CURRENCIES = ['USD', 'INR'];
 const FALLBACK_CURRENCY = 'USD';
 
 // Gateways that can only settle in one currency.
-const INR_ONLY_GATEWAYS = ['payu', 'razorpay'];
+//
+// PayU: this integration is PayU *India* (docs.payu.in), whose hosted/BOLT
+// checkout and verify_payment API settle in INR only, so a non-INR server must
+// be refused rather than charged a rupee amount under a foreign label.
+//
+// Razorpay is deliberately NOT in this list. Razorpay supports 160+ currencies
+// on Payment Gateway / Checkout via International Payments (settlement still
+// lands as INR), and explicitly documents passing e.g. `USD` with the amount in
+// cents. Treating it as INR-only was based on outdated information and would
+// needlessly block legitimate multi-currency sellers.
+const INR_ONLY_GATEWAYS = ['payu'];
+
+// Minor-unit exponent (decimal places) per currency. Gateways that expect the
+// smallest sub-unit need this: most currencies are 2, but Razorpay documents
+// 0-decimal (JPY, KRW, VND, CLP...) and 3-decimal (KWD, BHD, OMR, JOD, TND,
+// IQD) currencies too. Anything unlisted defaults to 2.
+const MINOR_UNIT_EXPONENTS = {
+  BHD: 3, CLP: 0, IQD: 3, JOD: 3, JPY: 0, KMF: 0, KRW: 0, KWD: 3,
+  OMR: 3, PYG: 0, RWF: 0, TND: 3, UGX: 0, VUV: 0, VND: 0, XAF: 0, XOF: 0, XPF: 0,
+};
+const DEFAULT_EXPONENT = 2;
 
 /** Normalise to the 3-letter uppercase form the gateways expect. */
 function normalizeCurrency(value) {
@@ -89,13 +109,54 @@ function unsupportedCurrencyMessage(gateway, currency) {
     + `Set the server currency to INR, or use PayPal for ${normalizeCurrency(currency) || currency}.`;
 }
 
+/**
+ * Decimal places the currency's smallest sub-unit uses. Razorpay requires the
+ * amount in that unit and rejects orders sent with the wrong exponent.
+ */
+function minorUnitExponent(currency) {
+  const cur = normalizeCurrency(currency);
+  if (!cur) return DEFAULT_EXPONENT;
+  return Object.prototype.hasOwnProperty.call(MINOR_UNIT_EXPONENTS, cur)
+    ? MINOR_UNIT_EXPONENTS[cur]
+    : DEFAULT_EXPONENT;
+}
+
+/** Convert a major-unit amount to the smallest sub-unit (Razorpay Orders API). */
+function toMinorUnits(amount, currency) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) throw new TypeError(`toMinorUnits: not a number: ${amount}`);
+  return Math.round(n * Math.pow(10, minorUnitExponent(currency)));
+}
+
+/** Inverse of toMinorUnits, for comparing a gateway's amount to our price. */
+function fromMinorUnits(minor, currency) {
+  const n = Number(minor);
+  if (!Number.isFinite(n)) throw new TypeError(`fromMinorUnits: not a number: ${minor}`);
+  return n / Math.pow(10, minorUnitExponent(currency));
+}
+
+/**
+ * Fixed-decimal string for a currency. PayU's documented hash example uses
+ * "10.00", and the amount string is hashed, so a stable representation matters.
+ */
+function formatAmount(amount, currency) {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) throw new TypeError(`formatAmount: not a number: ${amount}`);
+  return n.toFixed(minorUnitExponent(currency));
+}
+
 module.exports = {
   SUPPORTED_CURRENCIES,
   FALLBACK_CURRENCY,
+  MINOR_UNIT_EXPONENTS,
   normalizeCurrency,
   currencyForRow,
   resolveRowCurrency,
   isInrOnlyGateway,
   gatewaySupportsCurrency,
   unsupportedCurrencyMessage,
+  minorUnitExponent,
+  toMinorUnits,
+  fromMinorUnits,
+  formatAmount,
 };

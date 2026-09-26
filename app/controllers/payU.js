@@ -63,11 +63,17 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
       // PayU/BOLT settles in INR only and takes no currency parameter, so a
       // server priced in another currency would be charged a rupee amount
       // under a foreign label. Refuse instead of taking the money.
-      const { resolveRowCurrency, gatewaySupportsCurrency, unsupportedCurrencyMessage } = require('../utils/currency');
+      const { resolveRowCurrency, gatewaySupportsCurrency, unsupportedCurrencyMessage, formatAmount } = require('../utils/currency');
       const payuCurrency = await resolveRowCurrency(productData);
       if (!gatewaySupportsCurrency('payu', payuCurrency)) {
         return reject(unsupportedCurrencyMessage('payu', payuCurrency));
       }
+
+      // The amount is hashed, so the exact same string must go into the hash and
+      // into the form field. PayU's documented example is fixed-2-decimal
+      // ("10.00"), and an unformatted "30" can hash differently from what PayU
+      // reconstructs, so format once and reuse.
+      const amountStr = formatAmount(productData.vip_price, payuCurrency);
 
       let txnID = createTXNid()
       // PayU return URLs follow the configured PUBLIC_BASE_URL, else the
@@ -79,7 +85,7 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
       let errorURL = base + '/txnerrorpayu'
 
       let crypt = crypto.createHash('sha512');
-      let text = payUConfig.merchantKey + '|' + txnID + '|' + productData.vip_price + '|' + productInfo + '|' + reqBody.userFirstName + '|' + reqBody.userEmail + '|||||' + steamId + '||||||' + payUConfig.merchantSalt;
+      let text = payUConfig.merchantKey + '|' + txnID + '|' + amountStr + '|' + productInfo + '|' + reqBody.userFirstName + '|' + reqBody.userEmail + '|||||' + steamId + '||||||' + payUConfig.merchantSalt;
       crypt.update(text);
       let payUHash = crypt.digest('hex');
 
@@ -87,7 +93,7 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {
         "key": payUConfig.merchantKey,
         "txnid": txnID,
         "hash": payUHash,
-        "amount": productData.vip_price,
+        "amount": amountStr,
         "firstname": reqBody.userFirstName,
         "email": reqBody.userEmail,
         "phone": reqBody.userMobile,

@@ -32,9 +32,12 @@
   "gifting": {
     "enabled": true
   },
+  "verify_payments": true,
   "payment_gateways": {
     "paypal": {
-      "paypal_client_id": "Your paypal client id here (Leave Empty to disable Paypal Feature)"
+      "paypal_client_id": "Your paypal client id here (Leave Empty to disable Paypal Feature)",
+      "paypal_client_secret": "Your paypal client secret here (REQUIRED so the panel can verify payments server-side; without it PayPal is not offered)",
+      "environment": "write test to use the PayPal sandbox, live for real payments"
     },
     "payU": {
       "enabled": "write true to enable payu and false to disable payu, make sure to write true or false without double codes as it is boolean value",

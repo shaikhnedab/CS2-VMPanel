@@ -27,18 +27,16 @@ const salesModal = require("../models/salesModel.js");
 const vipModel = require("../models/vipModel.js");
 const { refreshBestEffort } = require("../utils/refreshCFGInServer")
 const { gatewaySupportsCurrency, unsupportedCurrencyMessage } = require("../utils/currency")
+const { verifyPayment, canVerify } = require("../modules/paymentVerify")
 const { logThisActivity } = require("../utils/activityLogger.js");
 const config = require('../config');
-const paypalClientID = config.payment_gateways.paypal.paypal_client_id
-const payUConfig = config.payment_gateways.payU
-const razorpayConfig = config.payment_gateways.razorPay;
-const crypto = require('crypto');
+// Gateway config is read at call time, not captured at require time: an admin
+// can change payment settings from the panel, and the store must reflect that
+// without needing a process restart.
+const gatewayCfg = () => config.payment_gateways;
 const { getPanelBundlesListFunc } = require('./panelServerBundles.js')
 const { sendBuyMessageOnDiscord } = require('./sendMessageOnDiscord.js')
 const panelServerModal = require("../models/panelServerModal.js");
-const paymentTamperedMessage =
-  "Payment Tempered!, Response HASH does not matches with payment HASH therefore payment failed, Contact Support";
-
 // Empty or example placeholder Client IDs count as "not configured" —
 // otherwise the placeholder text leaks into the PayPal SDK URL and breaks
 // checkout for installs that never set up PayPal.
@@ -143,10 +141,33 @@ const myDashboardFunc = (reqBody, reqUser) => {
 
       }
 
-      const paypalActive = isRealPaypalClientId(paypalClientID);
       const giftingActive = !config.gifting || config.gifting.enabled !== false;
-      const payuActive = (payUConfig.enabled == true || payUConfig.enabled == "true");
-      const razorpayActive = (razorpayConfig.enabled == true || razorpayConfig.enabled == "true");
+      // A gateway we cannot verify server-side must never be offered: taking
+      // the money and then being unable to confirm it is worse than not
+      // selling at all. canVerify() checks the merchant credentials are present
+      // (Razorpay key secret, PayU key+salt, PayPal client id *and* secret).
+      const verifying = config.verify_payments !== false;
+      const gw = gatewayCfg();
+      const paypalClientID = gw.paypal.paypal_client_id;
+      const payuEnabled = (gw.payU.enabled == true || gw.payU.enabled == "true");
+      const razorpayEnabled = (gw.razorPay.enabled == true || gw.razorPay.enabled == "true");
+
+      const paypalConfigured = isRealPaypalClientId(paypalClientID);
+      const paypalActive = verifying ? (paypalConfigured && canVerify('paypal')) : paypalConfigured;
+      const payuActive = verifying ? (payuEnabled && canVerify('payu')) : payuEnabled;
+      const razorpayActive = verifying ? (razorpayEnabled && canVerify('razorpay')) : razorpayEnabled;
+
+      if (verifying) {
+        if (paypalConfigured && !canVerify('paypal')) {
+          logger.warn('PayPal is enabled but cannot be verified (paypal_client_secret missing) - hiding it from the store.');
+        }
+        if (payuEnabled && !canVerify('payu')) {
+          logger.warn('PayU is enabled but cannot be verified (merchantKey/merchantSalt missing) - hiding it from the store.');
+        }
+        if (razorpayEnabled && !canVerify('razorpay')) {
+          logger.warn('Razorpay is enabled but cannot be verified (keyId/keySecret missing) - hiding it from the store.');
+        }
+      }
 
       const colSpan = (arr) => (12 / (arr instanceof Array && arr.filter(i => !!i).length) || 1);
 
@@ -158,7 +179,7 @@ const myDashboardFunc = (reqBody, reqUser) => {
         "paypalActive": paypalActive,
         "paypalClientID": paypalClientID,
         "payuActive": payuActive,
-        "payuEnv": payUConfig.environment,
+        "payuEnv": gw.payU.environment,
         "razorpayActive": razorpayActive,
         "giftingActive": giftingActive,
         "colSpan": `${colSpan([paypalActive, payuActive, razorpayActive])}`
@@ -231,11 +252,15 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       if (await salesModal.orderExists(quotedOrderId)) return reject("Duplicate payment: this order was already processed");
       const payStatus = String(paymentData && paymentData.status || '').toUpperCase();
       if (payStatus && !['COMPLETED', 'SUCCESS', 'CAPTURED', 'PAID'].includes(payStatus)) return reject("Payment not completed");
+      // The amount/currency the browser reported are advisory only; they are
+      // compared against the gateway's own numbers during verification below.
 
-      if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'renewPurchase') {
+      if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'renewPurchase' || reqBody.buyType === 'giftPurchase') {
         const tbls = String(serverTable || '').split(',').map((s) => s.trim()).filter(Boolean);
         if (!tbls.length) return reject("Invalid server selection");
         // Resolve each tbl_name from DB and enforce price/currency/days/flag match.
+        // giftPurchase belongs here too: it grants a VIP just like a purchase,
+        // so it must not be able to skip the price/currency binding.
         for (const t of tbls) {
           const srv = await panelServerModal.getPanelServerDetails(t).catch(() => null);
           if (!srv) return reject("Invalid server selection");
@@ -252,6 +277,44 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       }
       // Bundles are validated per-server inside the newPurchaseBundle branch via checkVipExists;
       // price binding for bundles resolves via getPanelBundlesListFunc below.
+
+      // ---- Server-side payment verification (fail closed) ----
+      // Everything above proves the *quote* was not tampered with. It says
+      // nothing about whether the money arrived: paymentData comes from the
+      // browser, so a forged { status: "SUCCESS" } would otherwise mint a free
+      // VIP. Ask the gateway itself, using our own merchant credentials, and
+      // compare its amount/currency against our DB price before granting
+      // anything. A gateway we cannot verify is never offered at checkout, so
+      // reaching here with one is a configuration or tampering problem.
+      let expected = null;
+      if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'renewPurchase' || reqBody.buyType === 'giftPurchase') {
+        const srv = await panelServerModal.getPanelServerDetails(String(serverTable).split(',')[0].trim()).catch(() => null);
+        if (!srv) return reject("Invalid server selection");
+        expected = { amount: Number(srv.vip_price), currency: srv.vip_currency };
+      } else if (reqBody.buyType === 'newPurchaseBundle') {
+        const bundles = await getPanelBundlesListFunc();
+        const chosen = (bundles || []).find((b) => b.bundle_name === (reqBody.serverData || {}).bundle_name);
+        if (!chosen) return reject("Invalid bundle selection");
+        if (Number(chosen.bundle_price) !== Number(reqBody.serverData.bundle_price)) return reject("Price mismatch, please retry");
+        expected = { amount: Number(chosen.bundle_price), currency: chosen.bundle_currency };
+      }
+      if (config.verify_payments !== false) {
+        if (!expected) return reject("Could not determine what was purchased");
+        const verdict = await verifyPayment({ gateway: reqBody.gateway, reqBody, expected });
+        if (!verdict.ok) {
+          // Never leak gateway internals to the buyer; log it, reject plainly.
+          logger.error(`payment verification failed (${reqBody.gateway}) for order ${quotedOrderId}: ${verdict.reason}`);
+          return reject(verdict.reason);
+        }
+        // Bind the duplicate check to the gateway's own reference, so a
+        // replayed or colliding id cannot slip through.
+        if (verdict.orderId && await salesModal.orderExists(`${reqBody.gateway}:${verdict.orderId}`)) {
+          return reject("Duplicate payment: this order was already processed");
+        }
+        reqBody.verifiedPayment = verdict;
+      } else {
+        logger.warn(`VERIFY_PAYMENTS is disabled - trusting the browser's claim for gateway ${reqBody.gateway}. Anyone can forge a payment.`);
+      }
 
       // ---- VIP gifting: optional recipient SteamID (else buyer). Never trust client payer. ----
       const isGift = reqBody.isGift === true || reqBody.isGift === 'true' || reqBody.buyType === 'giftPurchase';
@@ -271,78 +334,43 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         if (reqBody.buyType === 'renewPurchase') return reject("Gifts cannot renew; use new gift purchase");
       }
       const effectiveSaleType = isGift ? 3 : saleType;
-      let paymentInsertObj
 
-      if (reqBody.gateway === 'paypal') {
-        paymentInsertObj = {
-          order_id: paymentData.id,
-          payer_id: paymentData.payer.payer_id,
-          payer_steamid: buyerId64,
-          recipient_steamid: isGift ? recipientSteamId64 : null,
-          is_gift: isGift ? 1 : 0,
-          payer_email: paymentData.payer.email_address,
-          payer_name: paymentData.payer.name.given_name,
-          payer_surname: paymentData.payer.name.surname,
-          product_desc: paymentData.purchase_units[0].description,
-          amount_paid: paymentData.purchase_units[0].amount.value,
-          amount_currency: paymentData.purchase_units[0].amount.currency_code,
-          status: paymentData.status,
-          sale_type: effectiveSaleType
-        }
-      } else if (reqBody.gateway === 'payu') {
+      // Sales record. The security-relevant columns (order id, amount, currency,
+      // status) come from the gateway's own verified answer when verification
+      // ran, never from the browser. Descriptive columns (name/email/description)
+      // are only ever displayed, so the client's copy is acceptable there.
+      //
+      // This replaces two hand-rolled hash blocks that were both wrong: the PayU
+      // one built the reverse hash with 5 pipes and a single udf instead of the
+      // documented 6 pipes and udf5..udf1, and the Razorpay one compared against
+      // a `razorpay_signature` field the client never sends (it sends
+      // razorpay_payment_signature), so both rejected every real payment.
+      const v = reqBody.verifiedPayment;
+      const src = reqBody.gateway === 'paypal' ? (paymentData || {})
+        : reqBody.gateway === 'payu' ? (reqBody.payuData || {})
+          : (reqBody.razorpayData || {});
+      const payerBlock = (paymentData && paymentData.payer) || {};
 
-        let keyString = payUConfig.merchantKey + '|' + reqBody.payuData.txnid + '|' + reqBody.payuData.amount + '|' + reqBody.payuData.productinfo + '|' + reqBody.payuData.firstname + '|' + reqBody.payuData.email + '|||||' + reqBody.payuData.udf5 + '|||||';
-        let keyArray = keyString.split('|');
-        let reverseKeyArray = keyArray.reverse();
-        let reverseKeyString = payUConfig.merchantSalt + '|' + reqBody.payuData.status + '|' + reverseKeyArray.join('|');
-        let crypt = crypto.createHash('sha512');
-        crypt.update(reverseKeyString);
-        let calcHash = crypt.digest('hex');
+      const payerEmail = payerBlock.email_address || src.email || paymentData.payer_email || null;
+      const payerName = (payerBlock.name && payerBlock.name.given_name) || src.firstname || paymentData.payer_name || null;
+      const payerSurname = (payerBlock.name && payerBlock.name.surname) || src.lastname || paymentData.payer_surname || null;
+      const productDesc = (paymentData && paymentData.purchase_units && paymentData.purchase_units[0] && paymentData.purchase_units[0].description)
+        || src.productinfo || paymentData.product_desc || null;
 
-        if (calcHash === reqBody.payuData.hash) {
-          paymentInsertObj = {
-            order_id: paymentData.order_id,
-            payer_id: paymentData.payer_id,
-            payer_steamid: buyerId64,
-            recipient_steamid: isGift ? recipientSteamId64 : null,
-            is_gift: isGift ? 1 : 0,
-            payer_email: paymentData.payer_email,
-            payer_name: paymentData.payer_name,
-            payer_surname: paymentData.payer_surname,
-            product_desc: paymentData.product_desc,
-            amount_paid: paymentData.amount_paid,
-            amount_currency: paymentData.amount_currency,
-            status: paymentData.status,
-            sale_type: effectiveSaleType
-          }
-        } else {
-          return reject(paymentTamperedMessage);
-        }
-      } else if (reqBody.gateway === 'razorpay') {
-        // Verify using Razorpay's own fields (order_id/payment_id + signature), not client paymentData.
-        const rzp = reqBody.razorpayData || {};
-        const rzpOrderId = rzp.razorpay_order_id || paymentData.order_id;
-        const rzpPaymentId = rzp.razorpay_payment_id || paymentData.payer_id;
-        const crypt = crypto.createHmac("sha256", razorpayConfig.keySecret);
-        const calculatedHash = crypt.update(`${rzpOrderId}|${rzpPaymentId}`).digest("hex");
-
-        if (!rzp.razorpay_signature || rzp.razorpay_signature !== calculatedHash) return reject(paymentTamperedMessage);
-
-        paymentInsertObj = {
-          order_id: rzpOrderId,
-          payer_id: rzpPaymentId,
-          payer_steamid: buyerId64,
-          recipient_steamid: isGift ? recipientSteamId64 : null,
-          is_gift: isGift ? 1 : 0,
-          payer_email: paymentData.payer_email,
-          payer_name: paymentData.payer_name,
-          payer_surname: paymentData.payer_surname,
-          product_desc: paymentData.product_desc,
-          amount_paid: paymentData.amount_paid,
-          amount_currency: paymentData.amount_currency,
-          status: paymentData.status,
-          sale_type: effectiveSaleType
-        }
+      const paymentInsertObj = {
+        order_id: v ? v.orderId : quotedOrderId,
+        payer_id: v ? v.gatewayRef : (paymentData && (paymentData.payer_id || paymentData.payer)) || null,
+        payer_steamid: buyerId64,
+        recipient_steamid: isGift ? recipientSteamId64 : null,
+        is_gift: isGift ? 1 : 0,
+        payer_email: payerEmail,
+        payer_name: payerName,
+        payer_surname: payerSurname,
+        product_desc: productDesc,
+        amount_paid: v ? v.amount : quotedAmount,
+        amount_currency: v ? v.currency : (quotedCurrency || null),
+        status: v ? 'verified' : ((paymentData && paymentData.status) || null),
+        sale_type: effectiveSaleType
       }
 
       await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)

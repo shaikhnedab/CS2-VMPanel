@@ -24,7 +24,7 @@ const config = require("../config");
 const RazorPay = require("razorpay");
 const { getUUID } = require("../utils/crypto");
 const razorpayConfig = config.payment_gateways.razorPay;
-const { resolveRowCurrency, gatewaySupportsCurrency, unsupportedCurrencyMessage } = require("../utils/currency");
+const { resolveRowCurrency, normalizeCurrency, toMinorUnits } = require("../utils/currency");
 
 exports.initRazorpayPayment = async (req, res) => {
   try {
@@ -60,18 +60,21 @@ const createRzpOrder = async (reqBody, steamId) => {
   const { server_name, vip_price, vip_days } = reqBody.serverData;
   const productInfo = `${vip_days} days VIP for ${server_name} ${purchaseType(reqBody.type)}`;
 
-  // Razorpay is India-only: INR and nothing else. The server row declares the
-  // price currency, so refuse rather than silently reinterpreting a USD amount
-  // as rupees (which is what used to happen and then got rejected anyway).
+  // Razorpay supports 160+ currencies on Payment Gateway / Checkout via
+  // International Payments (settlement still lands as INR), and the docs are
+  // explicit that a foreign currency is passed through as-is with the amount in
+  // that currency's smallest sub-unit. It must NOT be forced to INR.
   const currency = await resolveRowCurrency(reqBody.serverData);
-  if (!gatewaySupportsCurrency('razorpay', currency)) {
-    throw unsupportedCurrencyMessage('razorpay', currency);
+  if (!normalizeCurrency(currency)) {
+    throw 'This server has no valid currency set, so the price cannot be charged. Please contact an admin.';
   }
 
   const rzpOrderOptions = {
-    amount: vip_price * 100, // Convert price to smallest subunit (50 rupees -> 5000 paise).,
-    currency,
-    receipt: createReceiptNumber(),
+    // Smallest sub-unit of the *chosen* currency: 2 for INR/USD, 0 for JPY,
+    // 3 for KWD. A hardcoded *100 silently mischarges every non-2-decimal
+    // currency by orders of magnitude.
+    amount: toMinorUnits(vip_price, currency),
+    receipt: createReceiptNumber(), // documented limit: 40 chars, must be unique
     notes: { steamId, productInfo }
   };
 
