@@ -240,6 +240,10 @@ select.form-control option { background: var(--surface-solid); color: var(--text
 }
 
 /* ---------- pagination ---------- */
+/* The list wraps instead of overflowing its container: with « + numbers + »
+   it is wider than any grid column it used to sit in, which painted the page
+   buttons over the per-page select. */
+.pagination { flex-wrap: wrap; row-gap: 6px; margin-bottom: 0; }
 .pagination .page-link { background: var(--surface-2) !important; border: 1px solid var(--line) !important; color: var(--text) !important; border-radius: 10px !important; margin: 0 3px; transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease) !important; min-width: 38px; text-align: center; font-family: var(--font-mono); }
 .pagination .page-link:hover { border-color: var(--net) !important; transform: translateY(-2px); }
 .pagination .page-item.active .page-link { background: var(--grad) !important; border: none !important; box-shadow: var(--glow); color: #fff !important; }

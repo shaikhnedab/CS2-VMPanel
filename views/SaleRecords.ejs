@@ -37,7 +37,7 @@
                 <input type="text" class="form-control" placeholder="Quick-find in this page…" data-table-filter="#salesrecords" aria-label="Quick-find sales on this page">
               </div>
             </div>
-            <div class="col-lg-2 col-md-6">
+            <div class="col-lg-3 col-md-6">
               <div class="form-group bmd-form-group mt-0 pt-0" style="margin-bottom:0 !important">
                 <label class="sr-only" for="recordsPerPage">Records per page</label>
                 <select class="form-control" id="recordsPerPage" onchange="recordPerPageChanged()" required>
@@ -47,9 +47,14 @@
                 </select>
               </div>
             </div>
-            <div class="col-lg-1 col-md-6">
-              <nav aria-label="Sales pages">
-                <ul class="pagination justify-content-end" id="paginationUL">
+          </div>
+          <%# Pagination gets its own full-width row: « + up to 5 numbers + »
+             never fits in a 1/12 column and used to overflow onto the
+             per-page select. %>
+          <div class="row">
+            <div class="col-12">
+              <nav aria-label="Sales pages" class="d-flex justify-content-end">
+                <ul class="pagination" id="paginationUL">
                 </ul>
               </nav>
             </div>

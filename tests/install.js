@@ -1867,6 +1867,20 @@ async function main() {
     // Steam names land in the sv_ name column: controls stripped, capped.
     assert.ok(/cleanVipName/.test(ud) && /slice\(0, 64\)/.test(ud), 'vip names are sanitized and capped');
   });
+  await ok('record pagination cannot overlap the per-page select', () => {
+    // « + up to 5 numbers + » never fit in the col-lg-1 column the list lived
+    // in, so the page buttons painted over the "10 / page" select.
+    for (const view of ['SaleRecords.ejs', 'PanelAuditLogs.ejs']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'views', view), 'utf8');
+      assert.ok(!/col-lg-1 col-md-6">\s*<nav aria-label="(Sales|Audit) pages">/.test(src),
+        `${view}: pagination no longer squeezed into a 1/12 column`);
+      assert.ok(/Pagination gets its own full-width row/.test(src),
+        `${view}: pagination has its own row`);
+    }
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'vmp-design-system.css'), 'utf8');
+    assert.ok(/\.pagination\s*\{[^}]*flex-wrap:\s*wrap/.test(css),
+      'the page list wraps instead of overflowing on narrow screens');
+  });
   await ok('a renewal that extends nothing is not reported as success', () => {
     const vip = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'vipModel.js'), 'utf8');
     // mysql2 returns a truthy OkPacket for an UPDATE that matched no rows.
