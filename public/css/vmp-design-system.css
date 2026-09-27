@@ -1458,7 +1458,13 @@ div[data-notify="container"] [data-notify="progressbar"] { display: none !import
   max-width: 100%;
   box-sizing: border-box;
 }
-.vmp-action + .vmp-action { margin-top: 10px; }
+/* The store card footer is `display:grid; gap:8px` (see .vmp-product
+   .card-footer), so a margin here would ADD to the gap and push the last block
+   past the card's padding box. Let the grid gap do the spacing. */
+.vmp-action + .vmp-action { margin-top: 0; }
+/* grid items stretch by default, which gave the last block extra height and
+   let its border sit on the card's own bottom edge. */
+.vmp-action { align-self: start; }
 .vmp-action-label {
   display: flex;
   align-items: center;

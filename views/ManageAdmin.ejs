@@ -120,7 +120,13 @@
                   <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                     <% if(serverList) {%>
                     <% for(let i=0; i < serverList.length; i++) { %>
-                    <button type="button" class="dropdown-item" onclick="getAdminTableListing('<%=serverList[i].tbl_name%>','<%=serverList[i].server_name%>')"> <%=serverList[i].server_name%> </button>
+                    <%# No inline onclick: a server name is admin-supplied and
+                        HTML-escaping does not make it safe inside a JS string
+                        literal (' decodes back from &#39; before the handler is
+                        compiled), which let a crafted name run script when
+                        another admin clicked this item. The values travel as
+                        data-* attributes and a delegated listener dispatches. %>
+                    <button type="button" class="dropdown-item" data-admin-server="<%=serverList[i].tbl_name%>" data-admin-server-name="<%=serverList[i].server_name%>"> <%=serverList[i].server_name%> </button>
                     <%}}%>
                   </div>
                 </div>
@@ -165,7 +171,7 @@
 
 <%- include('Footer.ejs') %>
 
-<script src="./js/ManageAdmin.js"></script>
+<script src="./js/ManageAdmin.js?v=2"></script>
 <script src="./js/customConfirm.js"></script>
 <script src="./js/notifications.js"></script>
 <script src="./js/steamIdFinder.js"></script>

@@ -288,3 +288,12 @@ $(document).ready(function () {
     }
   });
 });
+// Delegated server-picker dispatch - see the note in ManageVIP.js: an inline
+// onclick with an admin-supplied server name was a stored XSS.
+document.addEventListener('click', function (e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-admin-server]') : null;
+  if (!btn) return;
+  if (typeof window.getAdminTableListing === 'function') {
+    window.getAdminTableListing(btn.getAttribute('data-admin-server') || '', btn.getAttribute('data-admin-server-name') || '');
+  }
+});

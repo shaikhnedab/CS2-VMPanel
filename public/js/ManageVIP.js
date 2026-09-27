@@ -389,3 +389,16 @@ $(document).ready(function () {
     }
   });
 });
+// Delegated server-picker dispatch. The dropdown items used to carry an inline
+// onclick="getVIPTableListing('<tbl>','<name>')", but a server name is
+// admin-supplied: HTML-escaping turns ' into &#39;, which the parser decodes
+// back to ' before the handler is compiled, so a crafted name broke out of the
+// string literal and ran script in every other admin's session when clicked.
+// The values now travel as data-* attributes and are read from the DOM.
+document.addEventListener('click', function (e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-vip-server]') : null;
+  if (!btn) return;
+  if (typeof window.getVIPTableListing === 'function') {
+    window.getVIPTableListing(btn.getAttribute('data-vip-server') || '', btn.getAttribute('data-vip-server-name') || '');
+  }
+});

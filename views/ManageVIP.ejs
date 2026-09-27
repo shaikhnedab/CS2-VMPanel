@@ -232,7 +232,13 @@
                   <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
                     <% if(serverList) {%>
                     <% for(let i=0; i < serverList.length; i++) { %>
-                    <button type="button" class="dropdown-item" onclick="getVIPTableListing('<%=serverList[i].tbl_name%>','<%=serverList[i].server_name%>')">
+                    <%# No inline onclick: a server name is admin-supplied and
+                        HTML-escaping does not make it safe inside a JS string
+                        literal (' decodes back from &#39; before the handler is
+                        compiled), which let a crafted name run script when
+                        another admin clicked this item. The values travel as
+                        data-* attributes and a delegated listener dispatches. %>
+                    <button type="button" class="dropdown-item" data-vip-server="<%=serverList[i].tbl_name%>" data-vip-server-name="<%=serverList[i].server_name%>">
                       <%=serverList[i].server_name%> </button>
                     <%}}%>
                   </div>
@@ -281,7 +287,7 @@
 
 <%- include('Footer.ejs') %>
 
-<script src="./js/ManageVIP.js"></script>
+<script src="./js/ManageVIP.js?v=2"></script>
 <script src="./js/customConfirm.js"></script>
 <script src="./js/notifications.js"></script>
 <script src="./js/steamIdFinder.js"></script>

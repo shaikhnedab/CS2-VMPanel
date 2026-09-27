@@ -1620,6 +1620,46 @@ async function main() {
     const shared = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
     assert.ok(/function escHtml/.test(shared), 'the same escaping is used elsewhere');
   });
+  await ok('the admin server pickers do not build JS from a server name', () => {
+    // Same class of bug as the settings delete buttons, in the server dropdowns.
+    // onclick="getVIPTableListing('sv','<name>')" is NOT safe: HTML-escaping
+    // turns ' into &#39;, and the parser decodes that back to ' before the
+    // inline handler is compiled - so a crafted name broke out of the string
+    // literal and ran script in any admin who clicked the item.
+    const HOSTILE = "Kebab');window.__XSS=1;//";
+    const cases = [
+      { view: 'ManageVIP.ejs', js: 'ManageVIP.js', attr: 'data-vip-server', nameAttr: 'data-vip-server-name', fn: 'getVIPTableListing' },
+      { view: 'ManageAdmin.ejs', js: 'ManageAdmin.js', attr: 'data-admin-server', nameAttr: 'data-admin-server-name', fn: 'getAdminTableListing' },
+    ];
+    const ejsMod = require(path.join(__dirname, '..', 'node_modules', 'ejs'));
+    for (const c of cases) {
+      const file = path.join(__dirname, '..', 'views', c.view);
+      const src = fs.readFileSync(file, 'utf8')
+        .replace(/<%-\s*include\('Header\.ejs'\)\s*%>/, '')
+        .replace(/<%-\s*include\('Footer\.ejs'\)\s*%>/, '');
+      const html = ejsMod.render(src, {
+        serverList: [{ tbl_name: 'sv_t', server_name: HOSTILE }],
+        panelSetting: { community_name: 'V', color_theme: 'primary', platform_currency: 'INR', community_logo_url: '' },
+        currentURL: '/managevip', csrfToken: 'x', sessionToken: null, adminType: 1,
+        adminName: 'owner', sessionSteamId: null, steamName: null,
+        vipFlagList: [], serverData: {}, userData: {}, vipFlagArray: [], serverArray: [],
+      }, { filename: file });
+
+      assert.ok(!/onclick="[^"]*TableListing\('/.test(html),
+        `${c.view}: no inline onclick carrying the server name`);
+      assert.ok(new RegExp(`${c.attr}="sv_t"`).test(html), `${c.view}: table name travels as a data attribute`);
+      assert.ok(new RegExp(`${c.nameAttr}="Kebab`).test(html), `${c.view}: server name travels as a data attribute`);
+      // The name must be attribute-escaped, so the hostile quote cannot survive
+      // as a raw ' inside the attribute value.
+      const attr = new RegExp(`${c.nameAttr}="([^"]*)"`).exec(html);
+      assert.ok(attr && !attr[1].includes("'"), `${c.view}: the apostrophe is entity-encoded in the attribute`);
+
+      const js = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', c.js), 'utf8');
+      assert.ok(new RegExp(`closest\\('\\[${c.attr}\\]'\\)`).test(js),
+        `${c.js}: a delegated listener reads the data attribute`);
+      assert.ok(new RegExp(`window\\.${c.fn}\\(`).test(js), `${c.js}: ...and calls the real handler`);
+    }
+  });
   await ok('payment orders are priced from the database, not the request', async () => {
     // The amount is signed with the merchant key, so a client-supplied figure
     // would be an attacker-chosen value authenticated by us.
