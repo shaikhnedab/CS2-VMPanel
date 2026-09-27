@@ -56,7 +56,6 @@ const initRazorpayPayment = (serverData, type) => {
       })
       .catch(error => {
         $("#divForLoader").html("");
-        console.log("error==>", error);
         showNotif({ success: false, data: { error: error } });
       });
   });
@@ -123,7 +122,14 @@ const startRzpPayment = async (orderData, type) => {
 
   const rzpInst = new Razorpay(rzpPaymentOptions);
   rzpInst.on("payment.failed", response => {
-    console.log("PAYMENT ERROR =================================>", response);
+    // A silent console.log used to be the whole handler: the buyer saw nothing
+    // and retried blindly. Surface it, without dumping the raw response (it
+    // can carry PII) into the console.
+    var reason = response && response.error && response.error.description
+      ? String(response.error.description).slice(0, 200)
+      : 'Your payment was not completed. No money was taken — please try again.';
+    if (typeof showNotif === 'function') showNotif({ success: false, data: { message: reason } });
+    else if (window.vmpToast) window.vmpToast(reason, 'warning');
   });
   rzpInst.open();
 

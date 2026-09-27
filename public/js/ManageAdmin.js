@@ -101,7 +101,7 @@ function addNewAdminajax() {
 
 function deleteAdminajax(tableName, primaryKey) {
 
-  let htmlString = `<p>Delete admin <code>${primaryKey}</code>?</p><p class="vmp-hint">This removes their access from the server immediately and refreshes the server config.</p>`
+  let htmlString = `<p>Delete admin <code>${escHtml(primaryKey)}</code>?</p><p class="vmp-hint">This removes their access from the server immediately and refreshes the server config.</p>`
 
   custom_confirm(htmlString, (Mresponse) => {
 
@@ -166,7 +166,7 @@ function adminRowHtml(row) {
     <td class="truncate" style="max-width:160px" title="${escHtml(name)}">${escHtml(name)}</td>
     <td><code translate="no">${escHtml(flag)}</code></td>
     <td>${escHtml(row.serverName ? row.serverName : 'NA')}</td>
-    <td><button type="button" class="btn btn-danger btn-fab" style="width:38px;height:38px;min-width:38px" onclick="deleteAdminajax('${escHtml(row.server)}','${escHtml(sid)}')" aria-label="Delete admin ${escHtml(name)}"><i class="material-icons" aria-hidden="true">delete_forever</i></button></td>
+    <td><button type="button" class="btn btn-danger btn-fab" style="width:38px;height:38px;min-width:38px" data-del-admin="1" data-del-server="${escHtml(row.server)}" data-del-sid="${escHtml(sid)}" aria-label="Delete admin ${escHtml(name)}"><i class="material-icons" aria-hidden="true">delete_forever</i></button></td>
   </tr>`;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -295,5 +295,15 @@ document.addEventListener('click', function (e) {
   if (!btn) return;
   if (typeof window.getAdminTableListing === 'function') {
     window.getAdminTableListing(btn.getAttribute('data-admin-server') || '', btn.getAttribute('data-admin-server-name') || '');
+  }
+});
+
+// Delegated delete dispatch - see the note in ManageVIP.js: an inline onclick
+// with DB-supplied values was a stored XSS.
+document.addEventListener('click', function (e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-del-admin]') : null;
+  if (!btn) return;
+  if (typeof window.deleteAdminajax === 'function') {
+    window.deleteAdminajax(btn.getAttribute('data-del-server') || '', btn.getAttribute('data-del-sid') || '');
   }
 });

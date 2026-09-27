@@ -65,7 +65,9 @@ function vmpVerifyGiftRecipient() {
       window.vmpGift.verifiedFor = raw;
       var prev = document.getElementById('vmpGiftReceiverPreview');
       if (prev) {
-        var avatar = r.avatarUrl
+        // HTML-escaping is not a URL sanitizer: only render the avatar when it
+        // is an https URL, so a crafted scheme can never become a script sink.
+        var avatar = (r.avatarUrl && /^https:\/\//i.test(r.avatarUrl))
           ? '<img src="' + escHtml(r.avatarUrl) + '" alt="Receiver avatar" width="52" height="52" loading="lazy" style="border-radius:14px">'
           : '<div class="vmp-stat-icon blue" aria-hidden="true"><i class="material-icons">person</i></div>';
         prev.innerHTML = '<div class="card" style="margin:0"><div class="card-body" style="display:flex;gap:14px;align-items:center;padding:14px 16px !important">'

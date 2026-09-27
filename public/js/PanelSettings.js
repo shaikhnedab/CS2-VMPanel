@@ -155,7 +155,7 @@ function deletePAdminajax() {
 
   if (curentAdminType === 1) {
 
-    let htmlString = `<p>Delete panel admin <code>${$('#selected_padmin').val().split(":")[1]}</code>?</p><p class="vmp-hint">They lose panel access immediately. This cannot be undone.</p>`
+    let htmlString = `<p>Delete panel admin <code>${escHtml(($('#selected_padmin').val() || '').split(":")[1])}</code>?</p><p class="vmp-hint">They lose panel access immediately. This cannot be undone.</p>`
 
     custom_confirm(htmlString, (Mresponse) => {
       if (Mresponse == true) {

@@ -152,7 +152,7 @@
   };
   // Track the button that fired an ajax action so it can spin until the toast lands.
   document.addEventListener('click', function (e) {
-    var btn = e.target && e.target.closest ? e.target.closest('button[onclick*="ajax"], button[onclick*="Pay"], button[onclick*="pay"]') : null;
+    var btn = e.target && e.target.closest ? e.target.closest('button[onclick*="ajax"], button[onclick*="Pay"], button[onclick*="pay"], button[data-del-vip], button[data-del-admin]') : null;
     if (btn && !btn.disabled) {
       window._vmpPendingBtn = btn;
       window.vmpLoading(btn, true);
@@ -169,7 +169,16 @@
     announce(msg);
     try {
       if (window.$ && $.notify) {
-        $.notify({ icon: type === 'success' ? 'check_circle' : 'add_alert', message: msg },
+        // bootstrap-notify renders `message` as HTML, and several toast inputs
+        // are attacker-influenced (Steam personaName in "Receiver verified:
+        // ...", server error strings). Escape for this sink only: the live
+        // region and the alert() fallback both take plain text.
+        var esc = window.escHtml || function (s) {
+          return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+          });
+        };
+        $.notify({ icon: type === 'success' ? 'check_circle' : 'add_alert', message: esc(msg) },
           { type: type === 'success' ? 'success' : 'warning', timer: 3200, placement: { from: 'top', align: 'right' } });
         return;
       }

@@ -1710,13 +1710,93 @@ async function main() {
     // would be an attacker-chosen value authenticated by us.
     for (const rel of ['app/controllers/payU.js', 'app/controllers/razorPay.js']) {
       const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-      assert.ok(/getPanelServerDetails\(requested\)/.test(src), `${rel} reads the server row`);
+      assert.ok(/getPanelServerDetails\(/.test(src), `${rel} reads the server row`);
       assert.ok(!/vip_price, vip_currency, vip_days \} = reqBody\.serverData/.test(src),
         `${rel} does not destructure price from the request`);
       assert.ok(!/resolveRowCurrency\(reqBody\.serverData\)/.test(src), `${rel} does not take currency from the request`);
+      // A bundle checkout must be priced from the bundle row: pricing the first
+      // server of the comma list charged the wrong amount and failed
+      // verification after capture (paid, no VIP).
+      assert.ok(/newPurchaseBundle/.test(src), `${rel} handles bundle purchases`);
+      assert.ok(/getPanelBundlesListFunc/.test(src), `${rel} resolves the bundle from the database`);
+      const code = src.replace(/\r/g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+      assert.ok(!/split\(','\)\[0\]/.test(code), `${rel} no longer prices only the first server`);
+      // A comma list on a non-bundle purchase must be refused before charging,
+      // not after: settlement would reject it post-capture.
+      assert.ok(/tbls\.length !== 1/.test(src), `${rel} rejects multi-table single purchases up front`);
     }
     const model = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'myDashboardModel.js'), 'utf8');
     assert.ok(/module\.exports\.TABLE_NAME_RE/.test(model), 'the table-name allow-list is exported for validation');
+  });
+  await ok('row delete buttons do not build JS from database values', () => {
+    // Same stored-XSS class as the server pickers: onclick="deleteVIPajax(
+    // '<server>','<sid>')" breaks out when either value contains a quote, and
+    // escHtml (HTML-escaping) does not save a JS-string context.
+    for (const [rel, attr, fn] of [
+      ['public/js/ManageVIP.js', 'data-del-vip', 'deleteVIPajax'],
+      ['public/js/ManageAdmin.js', 'data-del-admin', 'deleteAdminajax'],
+    ]) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      const code = src.replace(/\r/g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+      assert.ok(!/onclick="delete(VIP|Admin)ajax\('/.test(code), `${rel}: no inline delete handler`);
+      assert.ok(new RegExp(`\\[${attr}\\]`).test(src), `${rel}: values travel as ${attr}`);
+      assert.ok(new RegExp(`window\\.${fn}\\(`).test(src), `${rel}: ...and reach ${fn}`);
+    }
+    // The confirm dialogs must escape the interpolated key, not inject it raw
+    // into .html().
+    const vip = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'ManageVIP.js'), 'utf8');
+    assert.ok(/escHtml\(primaryKey\)/.test(vip), 'delete-VIP confirm escapes the key');
+    const adm = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'ManageAdmin.js'), 'utf8');
+    assert.ok(/escHtml\(primaryKey\)/.test(adm), 'delete-admin confirm escapes the key');
+    const ps = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'PanelSettings.js'), 'utf8');
+    assert.ok(/escHtml\(\(\$\('#selected_padmin'\)\.val\(\)/.test(ps), 'delete-panel-admin confirm escapes the name');
+    const login = fs.readFileSync(path.join(__dirname, '..', 'views', 'Login.ejs'), 'utf8');
+    assert.ok(/u003c/.test(login), 'login error JSON escapes < so it cannot break out of <script>');
+  });
+  await ok('a grant that writes nothing is reported, not swallowed', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // Falsy insert/update results used to fall through with the promise never
+    // settling (buyer hangs) or, for bundles, resolve(true) on partial grants.
+    assert.ok(/VIP grant failed after payment/.test(ud), 'failed single grant rejects with the order reference');
+    assert.ok(/VIP renewal failed after payment/.test(ud), 'failed renewal rejects with the order reference');
+    assert.ok(/bundleFailures/.test(ud), 'bundle grants track per-server failures');
+    assert.ok(/VIP grant failed on /.test(ud), '...and name the failed servers instead of reporting success');
+    // A gifted bundle must refuse before the sale row when the recipient
+    // already holds VIP somewhere in the set, not mid-loop after earlier
+    // servers were granted and the order id consumed.
+    assert.ok(/Recipient already has VIP on one of these servers/.test(ud.split('bundleServerArray = singleServerTables')[0]),
+      'gift-bundle recipient check runs before the sale row');
+  });
+  await ok('toasts, ids and avatars cannot carry markup', () => {
+    // bootstrap-notify renders the toast message as HTML, and toast inputs
+    // include Steam-controlled strings, so vmpToast must escape for that sink.
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'vmp-ui.js'), 'utf8');
+    assert.ok(/message: esc\(msg\)/.test(ui), 'vmpToast escapes the notify message');
+    // PayU transaction ids must be unique per merchant: 2 letters plus epoch
+    // seconds (~676 values/sec) collided under concurrent checkouts.
+    const payu = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'payU.js'), 'utf8');
+    assert.ok(/crypto\.randomBytes\(8\)/.test(payu), 'txnid carries cryptographic randomness');
+    assert.ok(/Date\.now\(\)/.test(payu), '...plus millisecond time');
+    // Checkout inputs need length caps: firstname/email/mobile are signed into
+    // gateway hashes and stored, so unbounded values are a hash/input risk.
+    const form = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'paymentForm.js'), 'utf8');
+    assert.ok(/maxlength="60"/.test(form), 'firstname capped');
+    assert.ok(/maxlength="20"/.test(form), 'mobile capped');
+    assert.ok(/maxlength="254"/.test(form), 'email capped');
+    // HTML-escaping is not URL sanitizing: avatar rendering must require https.
+    const dash = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
+    assert.ok(/\/\^https:\\\/\\\//.test(dash), 'gift avatar requires an https URL');
+    const finder = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'steamIdFinder.js'), 'utf8');
+    assert.ok(/\/\^https:\\\/\\\//.test(finder), 'lookup avatar requires an https URL');
+    // Payment failure paths must tell the buyer, not just the console (which
+    // can also leak PII/payment objects).
+    const rzp = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'razorPay.js'), 'utf8');
+    assert.ok(/payment\.failed/.test(rzp) && /showNotif|vmpToast/.test(rzp.split('payment.failed')[1].slice(0, 600)),
+      'razorpay failure surfaces a message');
+    for (const [rel, label] of [['public/js/payU.js', 'payU'], ['public/js/razorPay.js', 'razorpay']]) {
+      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      assert.ok(!/console\.log\(/.test(src), `${label}: no console.log left in the payment path`);
+    }
   });
   await ok('a renewal that extends nothing is not reported as success', () => {
     const vip = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'vipModel.js'), 'utf8');

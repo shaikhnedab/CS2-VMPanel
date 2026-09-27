@@ -3,15 +3,15 @@ const paymentForm = (gateway = "payU") => {
             <div class="vmp-fetch-form" style="margin-top:4px">
               <div class="form-group bmd-form-group">
                 <label for="${gateway}firstname">First name</label>
-                <input type="text" name="firstname" id="${gateway}firstname" class="form-control" placeholder="Alex…" required autocomplete="given-name">
+                <input type="text" name="firstname" id="${gateway}firstname" class="form-control" placeholder="Alex…" required autocomplete="given-name" maxlength="60">
               </div>
               <div class="form-group bmd-form-group">
                 <label for="${gateway}mobile">Mobile number</label>
-                <input type="tel" name="mobile" id="${gateway}mobile" class="form-control" placeholder="+91…" required autocomplete="tel" inputmode="tel">
+                <input type="tel" name="mobile" id="${gateway}mobile" class="form-control" placeholder="+91…" required autocomplete="tel" inputmode="tel" maxlength="20">
               </div>
               <div class="form-group bmd-form-group">
                 <label for="${gateway}email">Email</label>
-                <input type="email" name="email" id="${gateway}email" class="form-control" placeholder="you@example.com…" required autocomplete="email" spellcheck="false">
+                <input type="email" name="email" id="${gateway}email" class="form-control" placeholder="you@example.com…" required autocomplete="email" spellcheck="false" maxlength="254">
               </div>
             </div>`;
 };

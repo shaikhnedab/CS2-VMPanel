@@ -459,6 +459,16 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           && Number(b.bundle_sub_days) === Number(reqBody.serverData.vip_days));
         if (!match) return reject("Bundle price mismatch, please retry");
         reqBody.bundleServerArray = singleServerTables;
+        // A gifted bundle must refuse BEFORE the sale row, for the same reason
+        // as a single gift: the grant loop below would otherwise refuse
+        // mid-loop, after earlier servers were already granted and the order
+        // id was consumed (partial fulfillment + blocked retry).
+        if (isGift) {
+          for (const t of singleServerTables) {
+            const exists = await vipModel.checkVipExists({ server: t, steamId: vipTarget });
+            if (exists && exists.name) return reject("Recipient already has VIP on one of these servers");
+          }
+        }
       }
 
       // Only now is the order consumed.
@@ -503,12 +513,20 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             await refreshBestEffort(newVipInsertObj.server[i]);
           }
           resolve(insertRes)
+        } else {
+          // A falsy grant must reject loudly with the order reference: the
+          // sale row above is already written, so a silent hang leaves money
+          // taken with no VIP and no message telling the buyer what to quote.
+          return reject("VIP grant failed after payment. Contact support with your order reference.");
         }
       } else if (reqBody.buyType === 'renewPurchase') {
 
         const updateVipObj = {
           day: Math.floor(subDays * 86400),
-          steamId: '"' + buyerId64 + '"',
+          // vipTarget, not a hardcoded buyer id: gifts cannot renew (rejected
+          // above), so these are equal today, but a single derivation cannot
+          // drift if that guard ever changes.
+          steamId: vipTarget,
           server: [serverTable],
           secKey: secKey
         }
@@ -519,6 +537,8 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             refreshBestEffort(updateVipObj.server[i]);
           }
           resolve(updateRes)
+        } else {
+          return reject("VIP renewal failed after payment. Contact support with your order reference.");
         }
       } else if (reqBody.buyType === 'newPurchaseBundle') {
 
@@ -526,12 +546,13 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         // the sale row was written.
         const bundleServerArray = reqBody.bundleServerArray
 
+        // (gift recipient state was checked above, before the sale row.)
+        const bundleFailures = [];
         for (let i = 0; i < bundleServerArray.length; i++) {
 
           let checkRes = await vipModel.checkVipExists({ server: bundleServerArray[i], steamId: vipTarget })
 
           if (checkRes && checkRes.name) {
-            if (isGift) return reject("Recipient already has VIP on one of these servers");
             const updateVipObj = {
               day: Math.floor(subDays * 86400),
               steamId: vipTarget,
@@ -542,6 +563,8 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             let updateRes = await vipModel.updateVIPData(updateVipObj)
             if (updateRes) {
               refreshBestEffort(bundleServerArray[i]);
+            } else {
+              bundleFailures.push(bundleServerArray[i]);
             }
           } else {
             const newVipInsertObj = {
@@ -557,8 +580,16 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             let insertRes = await vipModel.insertVIPData(newVipInsertObj)
             if (insertRes) {
               await refreshBestEffort(bundleServerArray[i]);
+            } else {
+              bundleFailures.push(bundleServerArray[i]);
             }
           }
+        }
+        // Never report success when a server was not granted: the buyer would
+        // walk away believing all servers are covered. Name the failed ones so
+        // support can grant exactly those.
+        if (bundleFailures.length) {
+          return reject("VIP grant failed on " + bundleFailures.join(', ') + " after payment. Contact support with your order reference.");
         }
         resolve(true)
       } else {

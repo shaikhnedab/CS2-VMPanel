@@ -448,7 +448,9 @@ div[data-notify="container"],
   width: auto !important; min-width: 300px !important; max-width: min(420px, calc(100vw - 24px)) !important;
   margin: 0 !important; padding: 12px 46px 12px 14px !important;
   display: flex !important; align-items: flex-start !important; gap: 10px !important;
-  z-index: 1900 !important;
+  /* Above the checkout modal (4000) so validation messages are visible while
+     the dialog is open. */
+  z-index: 4100 !important;
   border-radius: 14px !important;
   border: 1px solid var(--line-strong) !important;
   background: var(--surface-solid) !important; color: var(--text) !important;
@@ -1275,11 +1277,14 @@ select.form-control { height: var(--control-height); }
   .vmp-auth-hero { padding: 24px 20px !important; }
   .vmp-auth-hero h2 { font-size: 1.8rem; }
 
-  /* Table panels stay touch-scrollable without painting scrollbars. */
+  /* Table panels stay touch-scrollable without painting scrollbars. Vertical
+     scroll must stay available: the membership/manage tables cap themselves
+     with an inline max-height + overflow:auto, and overflow-y:hidden here
+     (with !important) used to defeat that and clip rows on phones. */
   .table-responsive,
   .vmp-scroller {
     overflow-x: auto !important;
-    overflow-y: hidden !important;
+    overflow-y: auto !important;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }

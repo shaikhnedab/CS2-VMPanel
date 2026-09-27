@@ -85,17 +85,42 @@ const initPayUPaymentFunc = (reqBody, reqUser, secKey, req) => {  return new Pro
       // price is exactly the kind of thing a future change turns into a discount.
       const panelServerModal = require('../models/panelServerModal.js');
       const { TABLE_NAME_RE } = require('../models/myDashboardModel.js');
-      const requested = String((reqBody.serverData || {}).tbl_name || '').split(',')[0].trim();
-      if (!TABLE_NAME_RE.test(requested)) return reject("Invalid server selection");
-      const row = await panelServerModal.getPanelServerDetails(requested).catch(() => null);
-      if (!row) return reject("Invalid server selection");
-      const productData = {
-        server_name: row.server_name,
-        vip_price: row.vip_price,
-        vip_currency: row.vip_currency,
-        vip_days: row.vip_days,
-      };
-      let productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")
+      // Bundle purchases must be priced from the bundle row, never from the
+      // first server in the comma list. The old code did split(',')[0], so a
+      // bundle checkout was initialized at a single server's price and then
+      // failed verification after the money was captured: paid, no VIP.
+      let productData;
+      let productInfo;
+      if (reqBody.type === 'newPurchaseBundle') {
+        const { getPanelBundlesListFunc } = require('./panelServerBundles.js');
+        const bundles = await getPanelBundlesListFunc().catch(() => []);
+        const wanted = String((reqBody.serverData || {}).bundle_name || (reqBody.serverData || {}).server_name || '');
+        const chosen = (bundles || []).find((b) => String(b.bundle_name) === wanted);
+        if (!chosen) return reject("Invalid bundle selection");
+        if (Number(chosen.bundle_price) !== Number((reqBody.serverData || {}).vip_price)) return reject("Price mismatch, please retry");
+        productData = {
+          server_name: chosen.bundle_name,
+          vip_price: chosen.bundle_price,
+          vip_currency: chosen.bundle_currency,
+          vip_days: chosen.bundle_sub_days,
+        };
+        productInfo = productData.vip_days + " days VIP for " + productData.server_name + " (Bundle)";
+      } else {
+        const tbls = String((reqBody.serverData || {}).tbl_name || '').split(',').map((s) => s.trim()).filter(Boolean);
+        // A non-bundle purchase covers exactly one server; anything else would
+        // fail at settlement after the charge, so refuse before charging.
+        if (tbls.length !== 1) return reject("Invalid server selection");
+        if (!TABLE_NAME_RE.test(tbls[0])) return reject("Invalid server selection");
+        const row = await panelServerModal.getPanelServerDetails(tbls[0]).catch(() => null);
+        if (!row) return reject("Invalid server selection");
+        productData = {
+          server_name: row.server_name,
+          vip_price: row.vip_price,
+          vip_currency: row.vip_currency,
+          vip_days: row.vip_days,
+        };
+        productInfo = productData.vip_days + " days VIP for " + productData.server_name + (reqBody.type == 'newPurchase' ? " (New Buy)" : reqBody.type == 'renewPurchase' ? " (Renewal)" : "")
+      }
 
       // PayU/BOLT settles in INR only and takes no currency parameter, so a
       // server priced in another currency would be charged a rupee amount
@@ -152,12 +177,12 @@ exports.initPayUPaymentFunc = initPayUPaymentFunc;
 //-----------------------------------------------------------------------------------------------------
 
 function createTXNid() {
-  let txID = 'PAYUORD-'
-  txID += randomString(2)
-  const now = new Date()
-  const secondsSinceEpoch = Math.round(now.getTime() / 1000)
-  txID += secondsSinceEpoch
-  return txID
+  // Unique per merchant: millisecond timestamp plus 64 bits of cryptographic
+  // randomness. The old scheme (2 letters from Math.random + epoch seconds)
+  // had ~676 values per second and collided under concurrent checkouts, which
+  // PayU rejects as a duplicate transaction.
+  return 'PAYUORD-' + Date.now().toString(36).toUpperCase()
+    + crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
 function randomString(length) {

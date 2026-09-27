@@ -159,7 +159,7 @@ function updateOldVIPajax() {
 
 function deleteVIPajax(tableName, primaryKey) {
 
-  let htmlString = `<p>Delete VIP <code>${primaryKey}</code>?</p><p class="vmp-hint">This removes their access from the server immediately and refreshes the server config.</p>`
+  let htmlString = `<p>Delete VIP <code>${escHtml(primaryKey)}</code>?</p><p class="vmp-hint">This removes their access from the server immediately and refreshes the server config.</p>`
 
   custom_confirm(htmlString, (Mresponse) => {
     if (Mresponse == true) {
@@ -232,7 +232,7 @@ function vipRowHtml(row) {
     <td class="mono tnum">${row.created_at ? dateFormatter(row.created_at) : 'NA'}</td>
     <td class="mono tnum">${row.expireStamp ? EpocToDate(row.expireStamp) : 'NA'}</td>
     <td>${row.expireStamp ? expiryBadge(remainingDays(row.expireStamp)) : 'NA'}</td>
-    <td><button type="button" class="btn btn-danger btn-fab" style="width:38px;height:38px;min-width:38px" onclick="deleteVIPajax('${escHtml(row.server)}','${escHtml(sid)}')" aria-label="Delete VIP ${escHtml(name)}"><i class="material-icons" aria-hidden="true">delete_forever</i></button></td>
+    <td><button type="button" class="btn btn-danger btn-fab" style="width:38px;height:38px;min-width:38px" data-del-vip="1" data-del-server="${escHtml(row.server)}" data-del-sid="${escHtml(sid)}" aria-label="Delete VIP ${escHtml(name)}"><i class="material-icons" aria-hidden="true">delete_forever</i></button></td>
   </tr>`;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -400,5 +400,18 @@ document.addEventListener('click', function (e) {
   if (!btn) return;
   if (typeof window.getVIPTableListing === 'function') {
     window.getVIPTableListing(btn.getAttribute('data-vip-server') || '', btn.getAttribute('data-vip-server-name') || '');
+  }
+});
+
+// Delegated delete dispatch. The row delete button used to carry an inline
+// onclick="deleteVIPajax('<server>','<sid>')", but HTML-escaping does not make
+// values safe inside a JS string literal (' decodes back from &#39; before the
+// handler compiles), and the sid comes from game-plugin-written rows. Values
+// now travel as data-* attributes and are read from the DOM.
+document.addEventListener('click', function (e) {
+  var btn = e.target && e.target.closest ? e.target.closest('[data-del-vip]') : null;
+  if (!btn) return;
+  if (typeof window.deleteVIPajax === 'function') {
+    window.deleteVIPajax(btn.getAttribute('data-del-server') || '', btn.getAttribute('data-del-sid') || '');
   }
 });

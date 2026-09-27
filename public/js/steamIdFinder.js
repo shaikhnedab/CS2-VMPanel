@@ -89,8 +89,12 @@ function profileUrlToDataFetcher(profileUrl) {
           $('#steamId_update').val(finalSteamID);
           $("#display_steamId").text(finalSteamID)
           $("#display_name").text(userName)
-          if (dpURL) {
+          // The server already restricts this to Steam CDN hosts; require https
+          // here too so a crafted scheme can never become a script sink.
+          if (dpURL && /^https:\/\//i.test(dpURL)) {
             $("#dp_div").html('<img src="' + escHtml(dpURL) + '" alt="Profile Picture">');
+          } else {
+            $("#dp_div").html('');
           }
           $("#name_add").focus();
         } catch (e) {

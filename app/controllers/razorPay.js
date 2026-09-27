@@ -60,16 +60,33 @@ const createRzpOrder = async (reqBody, steamId) => {
   // Price the order from OUR row, never from the request body.
   const panelServerModal = require('../models/panelServerModal.js');
   const { TABLE_NAME_RE } = require('../models/myDashboardModel.js');
-  const requested = String((reqBody.serverData || {}).tbl_name || '').split(',')[0].trim();
-  if (!TABLE_NAME_RE.test(requested)) {
-    throw 'Invalid server selection';
+  // Bundle purchases must be priced from the bundle row (see the same fix in
+  // payU.js): pricing the first server of the list charged the wrong amount
+  // and failed verification after capture.
+  let row;
+  let productInfo;
+  if (reqBody.type === 'newPurchaseBundle') {
+    const { getPanelBundlesListFunc } = require('./panelServerBundles.js');
+    const bundles = await getPanelBundlesListFunc().catch(() => []);
+    const wanted = String((reqBody.serverData || {}).bundle_name || (reqBody.serverData || {}).server_name || '');
+    const chosen = (bundles || []).find((b) => String(b.bundle_name) === wanted);
+    if (!chosen) throw 'Invalid bundle selection';
+    if (Number(chosen.bundle_price) !== Number((reqBody.serverData || {}).vip_price)) throw 'Price mismatch, please retry';
+    row = { server_name: chosen.bundle_name, vip_price: chosen.bundle_price, vip_currency: chosen.bundle_currency, vip_days: chosen.bundle_sub_days };
+    productInfo = `${row.vip_days} days VIP for ${row.server_name} (Bundle)`;
+  } else {
+    const tbls = String((reqBody.serverData || {}).tbl_name || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (tbls.length !== 1) throw 'Invalid server selection';
+    if (!TABLE_NAME_RE.test(tbls[0])) {
+      throw 'Invalid server selection';
+    }
+    row = await panelServerModal.getPanelServerDetails(tbls[0]).catch(() => null);
+    if (!row) throw 'Invalid server selection';
+    productInfo = `${row.vip_days} days VIP for ${row.server_name} ${purchaseType(reqBody.type)}`;
   }
-  const row = await panelServerModal.getPanelServerDetails(requested).catch(() => null);
-  if (!row) throw 'Invalid server selection';
   const server_name = row.server_name;
   const vip_price = row.vip_price;
   const vip_days = row.vip_days;
-  const productInfo = `${vip_days} days VIP for ${server_name} ${purchaseType(reqBody.type)}`;
 
   // Razorpay supports 160+ currencies on Payment Gateway / Checkout via
   // International Payments (settlement still lands as INR), and the docs are

@@ -83,7 +83,7 @@
 <%- include('Footer.ejs') %>
 
       <script>
-        let errorMsg = <%- JSON.stringify(error || null) %>;
+        let errorMsg = <%- JSON.stringify(error || null).replace(/</g, '\\u003c') %>;
 
         $(document).ready(function () {
           if (errorMsg) {

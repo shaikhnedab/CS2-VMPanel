@@ -53,7 +53,6 @@ function initPayUpayment(serverData, type) {
         })
         .catch(error => {
           $("#divForLoader").html("")
-          console.log("error==>", error)
           showNotif({ success: false, data: { "error": error } })
         });
     }
@@ -101,13 +100,11 @@ function launchBOLT(payuObj, serverData, type) {
           afterPaymentajax(payloadU)
 
         } catch (error) {
-          console.log("error==>", error)
           showNotif({ success: false, data: { "error": error } })
         }
       }
     },
     catchException: function (BOLT) {
-      console.log("bolt error=>", BOLT.message);
       showNotif({ success: false, data: { "error": BOLT.message } })
     }
   });
