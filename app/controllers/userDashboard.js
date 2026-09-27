@@ -353,6 +353,10 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       if (!flag) return reject("Could not determine the server flag for this purchase");
 
       // ---- VIP gifting: optional recipient SteamID (else buyer). Never trust client payer. ----
+      // `extendExisting` is derived below from the database, never from the
+      // request: a forged flag would skip the insert and fail after the sale row
+      // was written (money taken, no VIP).
+      delete reqBody.extendExisting;
       const isGift = reqBody.isGift === true || reqBody.isGift === 'true' || reqBody.buyType === 'giftPurchase';
       if (isGift && config.gifting && config.gifting.enabled === false) {
         return reject("VIP gifting is disabled by the panel administrator");
@@ -411,6 +415,13 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         sale_type: effectiveSaleType
       }
 
+      // Grant target, declared BEFORE the pre-grant checks below because those
+      // checks query by it. (It was previously declared after them, which made
+      // every one of them throw a TDZ ReferenceError.)
+      // Quoted canonical 64-bit target for sv_ rows (buyer or gift recipient).
+      const vipTarget = '"' + (isGift ? recipientSteamId64 : buyerId64) + '"';
+      const vipName = isGift ? `//Gift for ${recipientSteamId64} (from ${finalUserName})` : "//" + finalUserName;
+
       // ---- Pre-grant validation, BEFORE the sale row is written ----
       // These used to run after the insert, so a refusal (receiver already has
       // VIP, bundle mismatch) left a sale row with no VIP granted AND made every
@@ -424,11 +435,17 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           if (exists && exists.name) return reject("Recipient already has VIP on one of these servers");
         }
       } else if (reqBody.buyType === 'newPurchase') {
-        // A plain purchase must not add a second row for someone who already
-        // holds VIP; the UI only offers Renew, so enforce it here too.
+        // Buying again when you already hold VIP is allowed and EXTENDS the
+        // existing row (15 days left + a 30 day purchase = 45). It must never
+        // insert a second row for the same authId: the game plugin would then
+        // see two entries and the shorter one could expire out from under the
+        // longer. The grant step below checks again and updates instead.
         for (const t of singleServerTables) {
           const exists = await vipModel.checkVipExists({ server: t, steamId: vipTarget })
-          if (exists && exists.name) return reject("You already hold VIP on this server - use Renew instead");
+          if (exists && exists.name) {
+            reqBody.extendExisting = true;
+            break;
+          }
         }
       } else if (reqBody.buyType === 'renewPurchase') {
         const exists = await vipModel.checkVipExists({ server: singleServerTables[0], steamId: vipTarget })
@@ -444,17 +461,32 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         reqBody.bundleServerArray = singleServerTables;
       }
 
-      // Only now is the order consumed.      await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
-
-      // Gift target (quoted canonical SteamID); self-purchase uses buyer.
-      // Quoted canonical 64-bit target for sv_ rows (buyer or gift recipient).
-      const vipTarget = '"' + (isGift ? recipientSteamId64 : buyerId64) + '"';
-      const vipName = isGift ? `//Gift for ${recipientSteamId64} (from ${finalUserName})` : "//" + finalUserName;
+      // Only now is the order consumed.
+      await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
 
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'giftPurchase') {
 
         // (recipient-already-has-VIP is checked above, before the sale row, so a
         //  refusal cannot burn the order id and block a legitimate retry)
+        //
+        // If the buyer already holds VIP on this server, EXTEND that row instead
+        // of inserting a second one: 15 days left plus a 30 day purchase becomes
+        // 45. Two rows for one authId would confuse the game plugin and the
+        // shorter one could lapse while the buyer believes they are covered.
+        if (reqBody.extendExisting) {
+          const extended = await vipModel.updateVIPData({
+            day: Math.floor(subDays * 86400),
+            steamId: vipTarget,
+            server: singleServerTables,
+            secKey: secKey
+          })
+          if (!extended) return reject("Could not extend the existing VIP. Contact support with your order reference.");
+          for (let i = 0; i < singleServerTables.length; i++) {
+            await refreshBestEffort(singleServerTables[i]);
+          }
+          return resolve(extended);
+        }
+
         const newVipInsertObj = {
           day: epochTillExpiry(subDays),
           name: vipName,

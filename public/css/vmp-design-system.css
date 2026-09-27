@@ -1388,3 +1388,9 @@ div[data-notify="container"] [data-notify="progressbar"] { display: none !import
     max-width: calc(100vw - 20px) !important;
   }
 }
+
+/* Gift-only controls (owned-server gift buttons) ship hidden in the markup and
+   are revealed only when the gift switch is on. The [hidden] rule is explicit
+   because `.btn-block` sets display:block, which would otherwise defeat the
+   HTML hidden attribute. */
+.vmp-gift-only[hidden] { display: none !important; }

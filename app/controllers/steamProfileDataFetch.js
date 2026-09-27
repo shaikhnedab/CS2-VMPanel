@@ -20,6 +20,7 @@
 'use strict';
 const logger = require('../modules/logger')('Steam Profile Data Fetch');
 const Steam = require('../modules/steam');
+const { parseSteamProfile, isPublicProfile } = require('../utils/steamProfileXml');
 
 //-----------------------------------------------------------------------------------------------------
 // 
@@ -27,10 +28,30 @@ const Steam = require('../modules/steam');
 exports.fetchProfileData = async (req, res) => {
   try {
     const steam = new Steam();
-    const result = await steam.getProfile(req.body.profileUrl);
+    const body = await steam.getProfile(req.body.profileUrl);
+    // Parse here rather than shipping raw XML: the browser used to depend on
+    // the HTTP client happening to hand back a pre-parsed object, so a change of
+    // client silently produced a "Data fetched" toast with an empty form.
+    const profile = parseSteamProfile(body);
+    if (!profile.steamId64) {
+      return res.json({
+        success: false,
+        data: { "error": 'Steam did not return a profile for that link. Check it is public and correct.' }
+      });
+    }
+    // Only ever hand the browser an avatar URL we recognise as Steam's, so the
+    // value is safe to drop into an <img src> without relying on the client.
+    if (!/^https:\/\/avatars\.[a-z0-9.-]*steamstatic\.com\//i.test(profile.avatarUrl || '')) {
+      profile.avatarUrl = '';
+    }
     res.json({
       success: true,
-      data: { "res": result, "message": "Data fetched", "notifType": "success" }
+      data: {
+        "res": profile,
+        "public": isPublicProfile(profile),
+        "message": "Data fetched",
+        "notifType": "success"
+      }
     });
   } catch (error) {
     logger.error("Error fetching user data->", error);

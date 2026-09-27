@@ -33,12 +33,15 @@ function vmpInitPayPalSlot(el) {
 function vmpInitOwnedGiftSlots() {
   var on = !!(document.getElementById('vmpGiftToggle') || {}).checked;
   document.querySelectorAll('[data-giftrequired="1"]').forEach(function (el) {
+    // These render hidden in the markup, so the safe state does not depend on
+    // this script having run - a refresh with the switch off can never show a
+    // gift button.
+    if (on) el.removeAttribute('hidden');
+    else el.setAttribute('hidden', '');
     if (el.classList.contains('vmp-paypal-slot')) {
       el.innerHTML = '';
       if (on) vmpInitPayPalSlot(el);
-      return;
     }
-    el.style.display = on ? '' : 'none';
   });
 }
 

@@ -13,6 +13,9 @@ services:
       HOSTNAME: ${HOSTNAME:-localhost}
       SERVER_PORT: 3535
       APACHE_PROXY: true # TLS terminates at the reverse proxy
+      # Stamped into the startup log and /healthz. Set to the git tag you
+      # deployed so `docker logs panel | head` identifies the exact build.
+      PANEL_VERSION: ${PANEL_VERSION:-}
     ports:
       - "${SERVER_PORT:-3535}:3535"
     volumes:

@@ -202,7 +202,9 @@ function createApp() {
 
   // Liveness probe — no DB, no auth.
   app.get('/healthz', (req, res) => {
-    res.status(200).json({ ok: true });
+    // Reports the running version so a deploy can be confirmed without shell
+    // access to the container.
+    res.status(200).json({ ok: true, version: PANEL_VERSION, uptime: Math.round(process.uptime()) });
   });
 
   if (setupCompleteAtBoot && !cronScheduled) {
@@ -265,10 +267,19 @@ function createApp() {
   return app;
 }
 
+// Single source of truth for the running version, overridable at deploy time
+// (the Docker image is tagged by the release workflow, so PANEL_VERSION lets an
+// operator stamp the exact build they are running).
+const PANEL_VERSION = (process.env.PANEL_VERSION && String(process.env.PANEL_VERSION).trim())
+  || (() => { try { return require('./package.json').version; } catch (e) { return 'unknown'; } })();
+
 function startServer(app) {
   // set port, listen for requests
   const PORT = process.env.PORT || config.serverPort;
   app.listen(PORT, () => {
+    // Printed on every boot, for both `node server.js` and the container, so a
+    // running instance can always be identified from `docker logs` alone.
+    logger.info(`CS2-VMPanel v${PANEL_VERSION} starting (node ${process.version}, ${process.platform}).`);
     logger.info(`Server is running on port ${PORT}.`);
   });
 }

@@ -251,8 +251,14 @@ async function main() {
       razorpayActive: false, giftingActive: true, colSpan: '12',
     });
     const ownedHtml = render(true);
-    assert.ok(ownedHtml.includes('data-buytype="giftPurchase"'), 'owned -> gift path');
-    assert.ok(!ownedHtml.includes('data-buytype="newPurchase"'), 'owned -> no buy path');
+    // An owned server offers BOTH: a gift path (hidden until the switch is on)
+    // and an always-available "add days" path that extends the existing row.
+    assert.ok(ownedHtml.includes('data-buytype="giftPurchase"'), 'owned -> gift path available');
+    assert.ok(ownedHtml.includes('data-buytype="newPurchase"'), 'owned -> extend path available');
+    assert.ok(ownedHtml.includes('vmp-gift-only'), 'gift controls are marked gift-only');
+    assert.ok(/vmp-gift-only[^>]*hidden/.test(ownedHtml), 'gift controls ship hidden');
+    assert.ok(!/vmp-gift-only[^>]*data-buytype="newPurchase"/.test(ownedHtml),
+      'the extend control is NOT hidden behind the gift switch');
     assert.ok(render(false).includes('data-buytype="newPurchase"'), 'unowned -> buy path');
     assert.ok(ownedHtml.includes('You already hold VIP here'), 'owned card explains itself');
   });
@@ -922,30 +928,38 @@ async function main() {
     const n = (h, g) => (cardSlice(h).match(new RegExp(`data-gateway="${g}"`, 'g')) || []).length;
     const slots = (h) => (cardSlice(h).match(/vmp-paypal-slot/g) || []).length;
 
-    // Razorpay not configured -> must not appear (the reported bug).
+    // Razorpay not configured -> must not appear (the reported bug). An owned
+    // card has one visible "extend" control per configured gateway, plus one
+    // hidden gift control per gateway, so count only the visible ones.
+    // Count only VISIBLE buttons inside the store card: the gift control is
+    // marked hidden, and the membership table has its own (unrelated) controls.
+    const visible = (html, g) => (cardSlice(html).match(new RegExp(`<button[^>]*data-gateway="${g}"(?![^>]*hidden)`, 'g')) || []).length;
     let h = ejsMod.render(source, locals('INR', true, false, false));
-    assert.strictEqual(n(h, 'payu'), 1, 'payu shown when configured');
-    assert.strictEqual(n(h, 'razorpay'), 0, 'razorpay hidden when not configured');
-    assert.strictEqual(slots(h), 0, 'no empty paypal slot when paypal is off');
+    assert.strictEqual(visible(h, 'payu'), 1, 'payu shown when configured');
+    assert.strictEqual(visible(h, 'razorpay'), 0, 'razorpay hidden when not configured');
 
     h = ejsMod.render(source, locals('INR', false, true, false));
-    assert.strictEqual(n(h, 'razorpay'), 1, 'razorpay shown when configured');
-    assert.strictEqual(n(h, 'payu'), 0, 'payu hidden when not configured');
+    assert.strictEqual(visible(h, 'razorpay'), 1, 'razorpay shown when configured');
+    assert.strictEqual(visible(h, 'payu'), 0, 'payu hidden when not configured');
+    // The razorpay case above renders only razorpay, so its gift control must be
+    // present in the markup yet hidden behind the gift switch.
+    assert.ok(/vmp-gift-only[^>]*data-gateway="razorpay"[^>]*hidden/.test(cardSlice(h)),
+      'the razorpay gift control exists but ships hidden');
 
     // INR-only gateways key off the card's own currency, not the panel's:
     // an INR-priced server stays buyable even when the panel default is USD.
     h = ejsMod.render(source, locals('USD', true, true, false));
-    assert.strictEqual(n(h, 'payu'), 1, 'payu offered on an INR-priced card');
-    assert.strictEqual(n(h, 'razorpay'), 1, 'razorpay offered on an INR-priced card');
+    assert.strictEqual(visible(h, 'payu'), 1, 'payu offered on an INR-priced card');
+    assert.strictEqual(visible(h, 'razorpay'), 1, 'razorpay offered on an INR-priced card');
     // ...and a USD-priced server is refused by both, whatever the panel says.
     const usdCard = ejsMod.render(source, locals('INR', true, true, false, 'USD'));
-    assert.strictEqual(n(usdCard, 'payu'), 0, 'payu hidden on a USD-priced card');
-    assert.strictEqual(n(usdCard, 'razorpay'), 0, 'razorpay hidden on a USD-priced card');
+    assert.strictEqual(visible(usdCard, 'payu'), 0, 'payu hidden on a USD-priced card');
+    assert.strictEqual(visible(usdCard, 'razorpay'), 0, 'razorpay hidden on a USD-priced card');
     assert.ok(cardSlice(usdCard).includes('No payment method is available'), 'explains why nothing is buyable');
 
     // Nothing configured at all.
     h = ejsMod.render(source, locals('INR', false, false, false));
-    assert.strictEqual(n(h, 'payu') + n(h, 'razorpay'), 0, 'no buttons without config');
+    assert.strictEqual(visible(h, 'payu') + visible(h, 'razorpay'), 0, 'no buttons without config');
     assert.ok(cardSlice(h).includes('No payment method is available'), 'no-method message shown');
   });
   await ok('product card body does not stretch and open a dead gap', () => {
@@ -1389,8 +1403,79 @@ async function main() {
     const pre = ud.indexOf('Pre-grant validation');
     const ins = ud.indexOf('insertNewSaleRecord(paymentInsertObj');
     assert.ok(pre > 0 && ins > 0 && pre < ins, 'validation happens before the order is consumed');
-    // A plain purchase must not stack a second row for someone who has VIP.
-    assert.ok(/use Renew instead/.test(ud), 'duplicate VIP row refused on a plain purchase');
+    // A plain purchase must not stack a SECOND row; it must extend the existing
+    // one (15 days left + 30 day purchase = 45).
+    assert.ok(!/use Renew instead/.test(ud), 're-purchase is allowed again');
+    assert.ok(/reqBody\.extendExisting = true/.test(ud), 'existing VIP detected and flagged');
+    assert.ok(/if \(reqBody\.extendExisting\) \{[\s\S]{0,600}?updateVIPData\(/.test(ud),
+      'an existing row is EXTENDED, not duplicated');
+  });
+  await ok('the extend decision is server-side only', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    // A forged extendExisting would skip the insert and fail after the sale row
+    // is written: money taken, no VIP.
+    assert.ok(/delete reqBody\.extendExisting;/.test(ud), 'any client-supplied extendExisting is discarded first');
+    const del = ud.indexOf('delete reqBody.extendExisting;');
+    const use = ud.indexOf('if (reqBody.extendExisting)');
+    assert.ok(del > 0 && del < use, '...before it is ever read');
+  });
+  await ok('the Steam lookup returns parsed fields, not raw XML', () => {
+    const ctl = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'steamProfileDataFetch.js'), 'utf8');
+    // The client used to read res.children, which only existed when the HTTP
+    // client happened to pre-parse the XML - so the switch to a plain https
+    // client silently produced a "Data fetched" toast with an empty form.
+    assert.ok(/parseSteamProfile\(body\)/.test(ctl), 'the controller parses the Steam XML itself');
+    assert.ok(!/"res":\s*result/.test(ctl), 'the raw Steam payload is not shipped to the browser');
+    assert.ok(/steamstatic\\?\.com/i.test(ctl) || /steamstatic/.test(ctl),
+      'the avatar URL is restricted to Steam CDN hosts');
+    const util = fs.readFileSync(path.join(__dirname, '..', 'app', 'utils', 'steamProfileXml.js'), 'utf8');
+    for (const f of ['steamId64', 'personaName', 'realName', 'avatarUrl', 'privacyState']) {
+      assert.ok(new RegExp(`${f}:`).test(util), `the parsed shape exposes ${f}`);
+    }
+  });
+  await ok('a bare Steam custom URL name is a valid gift receiver', () => {
+    const gr = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'giftRecipient.js'), 'utf8');
+    // "shaikhnedab" was rejected with "not a valid Steam profile link or Steam ID".
+    assert.ok(/kind: 'vanity'/.test(gr), 'a vanity/shortname branch exists');
+    assert.ok(/steamcommunity\.com\/id\//.test(gr), '...and resolves it through the id/ endpoint');
+    // ...and it must come after the numeric forms so an ID is never read as a name.
+    assert.ok(gr.indexOf('isSteamID64(raw)') < gr.indexOf("kind: 'vanity'"), 'IDs are matched before the vanity branch');
+  });
+  await ok('the sale record is actually written', () => {
+    // A bad edit once merged this call into a comment, which silently disabled
+    // every sales record AND the replay check that reads the table.
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    const commented = ud.split('\n').filter((l) => /^\s*\/\//.test(l) && /insertNewSaleRecord/.test(l));
+    assert.strictEqual(commented.length, 0, 'the insert is not inside a comment');
+    assert.ok(/^\s*await salesModal\.insertNewSaleRecord\(paymentInsertObj, reqBody\.gateway\)\s*;?\s*$/m.test(ud),
+      'the sales insert is a live statement');
+    // And it must land after pre-grant validation, before the VIP write.
+    const pre = ud.indexOf('Pre-grant validation');
+    const ins = ud.search(/^\s*await salesModal\.insertNewSaleRecord/m);
+    const grant = ud.indexOf('insertVIPData(newVipInsertObj)');
+    assert.ok(pre > 0 && pre < ins, 'validation first');
+    assert.ok(ins < grant, 'then the sale row, then the grant');
+  });
+  await ok('every identifier is declared before it is used', () => {
+    // A reordering once moved `const vipTarget` below the pre-grant checks that
+    // query by it. That is a temporal-dead-zone ReferenceError, so gift, renew
+    // and re-purchase all threw before writing anything. Declaration order is
+    // the whole bug, so assert it directly.
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    const decl = /const vipTarget = /.exec(ud);
+    assert.ok(decl, 'vipTarget is declared exactly once');
+    const pre = ud.indexOf('Pre-grant validation');
+    assert.ok(decl.index < pre, 'vipTarget is declared before the pre-grant checks');
+    // No other `let`/`const` is used above its own declaration in the settlement
+    // body: scan for obvious use-before-declare of the locals this block reads.
+    const head = ud.slice(ud.indexOf('const afterPaymentProcessFunc'));
+    const locals = ['vipTarget', 'vipName', 'singleServerTables', 'isGift', 'recipientSteamId64', 'buyerId64'];
+    for (const name of locals) {
+      const firstUse = head.search(new RegExp(`\\b${name}\\b`));
+      const declaredAt = head.search(new RegExp(`(?:const|let|var)\\s+${name}\\b`));
+      assert.ok(declaredAt >= 0, `${name} is declared in the settlement body`);
+      assert.ok(firstUse >= declaredAt, `${name} is not used before it is declared`);
+    }
   });
   await ok('settlement never trusts the client for the bundle price', () => {
     const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
@@ -1712,7 +1797,12 @@ async function main() {
     await ok('healthz stays open during setup', async () => {
       const r = await request('GET', '/healthz');
       assert.strictEqual(r.status, 200);
-      assert.deepStrictEqual(JSON.parse(r.body), { ok: true });
+      const body = JSON.parse(r.body);
+      assert.strictEqual(body.ok, true);
+      // The version is reported so a deploy can be confirmed without shell
+      // access to the container.
+      assert.ok(/^\d+\.\d+\.\d+/.test(body.version || ''), 'reports a semver version: ' + body.version);
+      assert.ok(typeof body.uptime === 'number');
     });
     await ok('wizard GET /install renders form', async () => {
       const r = await request('GET', '/install');

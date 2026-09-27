@@ -72,6 +72,12 @@ function normalizeInput(input) {
   }
   const m = raw.match(PROFILE_URL_RE);
   if (m) return { kind: 'url', profileUrl: `https://steamcommunity.com/${raw.match(VANITY_RE) ? `id/${raw.match(VANITY_RE)[2]}` : `profiles/${raw.match(/profiles\/(\d{17})/i)[1]}`}` };
+  // A bare custom URL name, e.g. "shaikhnedab". Steam resolves it to a numeric
+  // ID via the Web API, so it is a valid receiver input - it was previously
+  // rejected with "not a valid Steam profile link or Steam ID".
+  if (/^[A-Za-z0-9_-]{2,64}$/.test(raw)) {
+    return { kind: 'vanity', vanity: raw, profileUrl: `https://steamcommunity.com/id/${raw}` };
+  }
   throw new Error('That does not look like a valid Steam profile link or Steam ID.');
 }
 
