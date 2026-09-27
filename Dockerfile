@@ -25,6 +25,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 RUN test -f /app/server.js \
  && test -f /app/app/db/migrate.js \
  && test -f /app/app/routes/install.js \
+ && test -f /app/app/tools/audit-sales.js \
  && test -f /app/views/Login.ejs \
  && test -f /app/views/Install.ejs \
  && test -d /app/public \

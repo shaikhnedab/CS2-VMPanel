@@ -1620,6 +1620,51 @@ async function main() {
     const shared = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
     assert.ok(/function escHtml/.test(shared), 'the same escaping is used elsewhere');
   });
+  await ok('the settlement audit ships where the image can reach it', () => {
+    // It used to live in scratch/, which is gitignored and which the Dockerfile
+    // never copies - so `docker compose exec panel node scratch/audit-sales.js`
+    // failed with MODULE_NOT_FOUND. It must be a committed, in-image path.
+    const tool = path.join(__dirname, '..', 'app', 'tools', 'audit-sales.js');
+    assert.ok(fs.existsSync(tool), 'app/tools/audit-sales.js exists');
+
+    const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+    // ./app is copied wholesale, so app/tools/ is in the image by construction.
+    assert.ok(/COPY --chown=\S+ \.\/app \/app\/app/.test(dockerfile), 'the image copies ./app');
+    assert.ok(/test -f \/app\/app\/tools\/audit-sales\.js/.test(dockerfile),
+      'the build asserts the tool is present, so it cannot vanish silently');
+
+    // Runnable from the image layout, with no hard-coded developer paths.
+    const src = fs.readFileSync(tool, 'utf8');
+    assert.ok(!/\/home\/[a-z]/.test(src), 'no absolute developer home path');
+    assert.ok(/path\.resolve\(__dirname, '\.\.', '\.\.'\)/.test(src), 'resolves the panel root from __dirname');
+    // Read-only: no write statement may reach the database. Strip line and
+    // block comments first, then look for SQL keywords OUTSIDE the quoted
+    // template literals that carry the SELECTs.
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    // The queries are the template literals passed to q(...) and count(...).
+    // Matching every backtick pair also catches the backticks inside the esc()
+    // and tbl() helpers, which are not SQL, so bind to the call sites instead.
+    const queries = [...code.matchAll(/q\(\s*`([\s\S]*?)`\s*\)/g)].map((m) => m[1]);
+    const sqlInCode = queries.join('\n');
+    const outsideSql = code.replace(/q\(\s*`[\s\S]*?`\s*\)/g, 'q(``)');
+    // Word-boundary alone also matches String.prototype.replace, so require the
+    // keywords to appear in SQL position (after FROM/INTO/TABLE or a newline).
+    assert.ok(!/\b(INSERT\s+INTO|UPDATE\s+\w|DELETE\s+FROM|DROP\s+TABLE|ALTER\s+TABLE|TRUNCATE\s|REPLACE\s+INTO)\b/i.test(outsideSql),
+      'no write statements outside the SQL strings');
+    for (const bad of ['INSERT INTO', 'UPDATE ', 'DELETE FROM', 'DROP TABLE', 'TRUNCATE', 'REPLACE INTO']) {
+      assert.ok(!sqlInCode.toUpperCase().includes(bad.toUpperCase()), 'no "' + bad + '" in any query');
+    }
+    assert.ok(/\bSELECT\b/i.test(sqlInCode), 'it does run SELECTs');
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    assert.strictEqual(pkg.scripts.audit, 'node app/tools/audit-sales.js', 'exposed as npm run audit');
+
+    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+    assert.ok(/npm run audit/.test(readme), 'documented in the README');
+    assert.ok(/docker compose exec panel npm run audit/.test(readme), 'with the Docker invocation');
+  });
   await ok('the admin server pickers do not build JS from a server name', () => {
     // Same class of bug as the settings delete buttons, in the server dropdowns.
     // onclick="getVIPTableListing('sv','<name>')" is NOT safe: HTML-escaping

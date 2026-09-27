@@ -165,6 +165,24 @@ until one of the paths above has run at least once.
 
 A `config.json` written by an older version still works; new keys fall back to documented defaults.
 
+### Settlement audit
+
+`npm run audit` cross-references verified payments against the live VIP rows and prints anything that
+needs a human: payments captured but never granted, renewals that did not extend anything, duplicate
+rows for one `authId`, VIP held with no sale on record, and configured servers whose table is missing.
+
+It is read-only (SELECTs only) and uses the same config and credentials as the panel, so run it
+wherever the panel runs:
+
+```bash
+npm run audit                                # local checkout
+docker compose exec panel npm run audit      # Docker
+```
+
+It is a diagnostic, not a repair tool — nothing is modified. Section 4 is the one that normally
+needs action: those payments were captured by the gateway but no VIP was ever granted, so they need
+a refund or a manual grant.
+
 ### Steam ID lookup
 
 The lookup box on **Manage VIP** and the receiver box on the gift flow both accept any of these, and
@@ -355,6 +373,7 @@ app/
   db/migrations/   versioned schema (npm run migrate, idempotent)
   models/          data access
   routes/          router + first-boot installer
+  tools/           audit-sales.js (npm run audit, read-only)
   utils/           Steam ID math, URL/secret helpers
 public/css/        nova-tokens.css (tokens) + vmp-design-system.css (components)
 views/             EJS templates

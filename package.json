@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node tests/smoke.js && node tests/install.js",
     "start": "node server.js",
-    "migrate": "node app/db/migrate.js"
+    "migrate": "node app/db/migrate.js",
+    "audit": "node app/tools/audit-sales.js"
   },
   "keywords": [
     "nodejs",
