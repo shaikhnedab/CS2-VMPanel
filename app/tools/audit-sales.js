@@ -67,16 +67,33 @@ const rule = (t) => say('\n=== ' + t + ' ' + '='.repeat(Math.max(3, 66 - t.lengt
 
   rule('2. Verified payments');
   let verified = [];
+  let hasGrantCols = true;
   try {
-    verified = await q(`SELECT id, created_on, payment_gateway, sale_type, is_gift,
-                               payer_steamid, recipient_steamid, amount_paid, amount_currency, product_desc
-                        FROM ${tbl(salesTable)}
-                        WHERE LOWER(status) IN ('verified','success','captured','completed')
-                        ORDER BY created_on DESC LIMIT 500`);
+    try {
+      verified = await q(`SELECT id, created_on, payment_gateway, sale_type, is_gift,
+                                 payer_steamid, recipient_steamid, amount_paid, amount_currency, product_desc,
+                                 grant_status, grant_error
+                          FROM ${tbl(salesTable)}
+                          WHERE LOWER(status) IN ('verified','success','captured','completed')
+                          ORDER BY created_on DESC LIMIT 500`);
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || /grant_status/.test((e && e.message) || ''))) {
+        // Pre-migration-005 table: no grant tracking columns yet.
+        hasGrantCols = false;
+        verified = await q(`SELECT id, created_on, payment_gateway, sale_type, is_gift,
+                                   payer_steamid, recipient_steamid, amount_paid, amount_currency, product_desc
+                            FROM ${tbl(salesTable)}
+                            WHERE LOWER(status) IN ('verified','success','captured','completed')
+                            ORDER BY created_on DESC LIMIT 500`);
+      } else { throw e; }
+    }
+    if (!hasGrantCols) say('   (no grant_status columns: run the migrator to enable grant tracking)');
     if (!verified.length) say('   (none)');
     else verified.forEach((r) => say(
       `   #${String(r.id).padEnd(5)} ${iso(r.created_on)}  ${String(r.payment_gateway).padEnd(9)} ${KIND[r.sale_type] || 'type' + r.sale_type}` +
-      `  ${String(r.amount_paid).padStart(6)} ${String(r.amount_currency).padEnd(4)} payer=${r.payer_steamid} recipient=${r.recipient_steamid || '-'} :: ${esc(r.product_desc)}`));
+      `  ${String(r.amount_paid).padStart(6)} ${String(r.amount_currency).padEnd(4)} payer=${r.payer_steamid} recipient=${r.recipient_steamid || '-'}` +
+      (hasGrantCols ? `  grant=${r.grant_status || 'pending'}${r.grant_error ? ' (' + esc(r.grant_error) + ')' : ''}` : '') +
+      ` :: ${esc(r.product_desc)}`));
   } catch (e) { errors++; say('   ERROR: ' + e.message); }
 
   rule('3. Live VIP rows');
@@ -108,15 +125,22 @@ const rule = (t) => say('\n=== ' + t + ' ' + '='.repeat(Math.max(3, 66 - t.lengt
 
   rule('4. Delivered? each verified payment vs a live VIP row');
   say('   A renewal legitimately leaves a single row, so only MISSING is a problem.');
-  let missing = 0, stale = 0;
+  let missing = 0, stale = 0, failed = 0;
   if (!verified.length) say('   nothing to reconcile');
   else for (const s of verified) {
     const who = String(s.recipient_steamid || s.payer_steamid || '').replace(/"/g, '');
     const where = byAuth.get(who);
     const kind = KIND[s.sale_type] || 'type' + s.sale_type;
+    const tag = `   #${s.id} ${isoDay(s.created_on)} ${String(s.payment_gateway).padEnd(9)} ${kind} ${s.amount_paid} ${s.amount_currency}`;
+    // The settlement itself records grant failures now: trust that first.
+    if (hasGrantCols && s.grant_status === 'failed') {
+      failed++;
+      say(`   FAILED   ${tag}  grant failed${s.grant_error ? ': ' + esc(s.grant_error) : ''} -> refund or grant by hand`);
+      continue;
+    }
     if (!where || !where.length) {
       missing++;
-      say(`   MISSING  #${s.id} ${isoDay(s.created_on)} ${String(s.payment_gateway).padEnd(9)} ${kind} ${s.amount_paid} ${s.amount_currency}  no VIP row for ${who}  (${esc(s.product_desc)})`);
+      say(`   MISSING  ${tag}  no VIP row for ${who}  (${esc(s.product_desc)})`);
       continue;
     }
     // A renewal should have pushed the expiry past the day it was paid for.
@@ -126,12 +150,12 @@ const rule = (t) => say('\n=== ' + t + ' ' + '='.repeat(Math.max(3, 66 - t.lengt
       const paidFor = Math.floor(new Date(isoDay(s.created_on) + 'T00:00:00Z').getTime() / 1000);
       if (newest < paidFor) {
         stale++;
-        say(`   STALE    #${s.id} ${isoDay(s.created_on)} ${String(s.payment_gateway).padEnd(9)} ${kind} ${s.amount_paid} ${s.amount_currency}  VIP on ${where.join(',')} expires ${isoDay(new Date(newest * 1000))} - not after the renewal`);
+        say(`   STALE    ${tag}  VIP on ${where.join(',')} expires ${isoDay(new Date(newest * 1000))} - not after the renewal`);
       }
     }
   }
-  if (!missing && !stale) say('   every verified payment has a matching VIP row');
-  else say(`\n   ${missing} payment(s) with NO VIP row, ${stale} renewal(s) that did not extend anything.`);
+  if (!missing && !stale && !failed) say('   every verified payment has a matching VIP row');
+  else say(`\n   ${missing} payment(s) with NO VIP row, ${stale} renewal(s) that did not extend anything, ${failed} recorded grant failure(s).`);
 
   rule('5. Configured servers vs tables that exist');
   try {
@@ -166,6 +190,7 @@ const rule = (t) => say('\n=== ' + t + ' ' + '='.repeat(Math.max(3, 66 - t.lengt
   rule('SUMMARY');
   say(`   verified payments seen : ${verified.length}`);
   say(`   paid, nothing granted  : ${missing}`);
+  say(`   recorded grant failures: ${failed}`);
   say(`   renewals that did nothing: ${stale}`);
   say(`   live VIP identities    : ${byAuth.size}`);
   say(`   duplicate rows         : ${dupes}`);

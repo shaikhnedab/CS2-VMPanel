@@ -62,28 +62,29 @@ document.addEventListener('DOMContentLoaded', function () {
 function setPayPalButton(id, serverData, type) {
 
   let server = serverData.server_name ? serverData.server_name : ''
-  // PayPal is multi-currency, so it charges the currency the server row is
-  // priced in (the panel currency is only the default for rows without one).
-  let currency = (typeof window.vmpProductCurrency === 'function')
-    ? window.vmpProductCurrency(serverData)
-    : (serverData.vip_currency ? serverData.vip_currency : '')
   let price = serverData.vip_price ? serverData.vip_price : ''
-  let subDays = serverData.vip_days ? serverData.vip_days : ''
 
-  if (paypalActive == true && price && currency && server) {
+  if (paypalActive == true && price && server) {
     paypal.Buttons({
-      createOrder: (data, actions) => {
-        return actions.order.create({
-          purchase_units: [
-            {
-              description: subDays + " days VIP for " + server + (type == 'newPurchase' ? " (New Buy)" : type == 'renewPurchase' ? " (Renewal)" : type == "newPurchaseBundle" ? " (New Buy Bundle)" : ""),
-              amount: {
-                currency_code: currency,
-                value: price,
-              },
-            },
-          ],
-        });
+      // The order is created server-side from our own row: a client-side
+      // amount could be tampered with, and a mismatch was only discovered
+      // after the money moved (paid, no VIP). The server returns the PayPal
+      // order id to approve.
+      createOrder: () => {
+        return fetch('/initpaypalorder', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverData: serverData, type: type })
+        })
+          .then((res) => res.json())
+          .then((response) => {
+            if (response && response.success && response.data && response.data.res && response.data.res.orderID) {
+              return response.data.res.orderID;
+            }
+            var msg = (response && response.data && (response.data.error || response.data.message)) || 'Could not start PayPal checkout. Please try again.';
+            showNotif({ success: false, data: { message: msg } });
+            throw new Error(msg);
+          });
       },
       onCancel: (data) => {
         showNotif({

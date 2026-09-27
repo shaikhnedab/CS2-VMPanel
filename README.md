@@ -214,7 +214,15 @@ and an RCON failure never rolls back the VIP/admin database write — the toast 
 
 A gateway button only appears once that gateway is configured **and can be verified server-side**.
 Every payment is confirmed with the gateway itself before a VIP is granted — see
-[Payment verification](#payment-verification) below.
+[Payment verification](#payment-verification) below. All three gateways create their order from the
+panel's own database row (PayPal included: the button approves a server-created order id), so the
+charged amount can never come from the browser.
+
+Every sale carries a `grant_status` (`pending` → `granted` / `failed`, migration `005`): a payment
+that was captured but never delivered is recorded as `failed` with the reason, and `npm run audit`
+reports exactly those rows in section 4. `VERIFY_PAYMENTS=false` is a debugging escape hatch only —
+in production (`NODE_ENV=production`, which the Docker image sets) verification is forced on even
+if it is set.
 
 **Currencies.** Each server and bundle carries its own currency, editable in Panel Settings; the
 panel's **Platform Currency** is only the default for new rows. PayU is PayU *India* and settles

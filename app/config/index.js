@@ -130,7 +130,17 @@ config.payment_gateways = {
 // Fail-closed payment verification. Turning this off restores the old
 // trust-the-browser behaviour and is only for debugging; it is logged loudly
 // at startup because it lets anyone mint a VIP by forging a request.
-config.verify_payments = envBool(process.env.VERIFY_PAYMENTS, (rawConfig.verify_payments !== false));
+// In production it cannot be turned off at all: NODE_ENV=production (which the
+// Docker image sets) forces verification on, because a single mis-set env var
+// must never be the difference between paid and free VIP.
+function productionVerify(value) {
+  if (value === false && String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+    try { require('../modules/logger')('Config').error('VERIFY_PAYMENTS=false is ignored in production: verification forced on.'); } catch (e) { /* logger optional here */ }
+    return true;
+  }
+  return value;
+}
+config.verify_payments = productionVerify(envBool(process.env.VERIFY_PAYMENTS, (rawConfig.verify_payments !== false)));
 config.logging = { logLevel: process.env.LOG_LEVEL || (rawConfig.logging && rawConfig.logging.logLevel) || 'INFO' };
 
 function dotenvPath() {  return process.env.DOTENV_PATH || path.join(__dirname, '..', '..', '.env');
@@ -247,7 +257,7 @@ function applyEnv(cfg) {
       keySecret: process.env.RAZORPAY_KEY_SECRET || (pg.razorPay && pg.razorPay.keySecret) || '',
     },
   };
-  cfg.verify_payments = envBool(process.env.VERIFY_PAYMENTS, (rc.verify_payments !== false));
+  cfg.verify_payments = productionVerify(envBool(process.env.VERIFY_PAYMENTS, (rc.verify_payments !== false)));
   cfg.logging = { logLevel: process.env.LOG_LEVEL || (rc.logging && rc.logging.logLevel) || 'INFO' };
   return cfg;
 }

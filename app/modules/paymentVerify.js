@@ -383,6 +383,7 @@ module.exports = {
   canVerifyRazorpay,
   canVerifyPayU,
   canVerifyPayPal,
+  paypalAccessToken,
   payuReverseHash,
   payuCommandHash,
   amountMatches,

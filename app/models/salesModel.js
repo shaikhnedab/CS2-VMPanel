@@ -35,12 +35,17 @@ var salesModel = {
     return new Promise(async (resolve, reject) => {
       try {
 
+        // Matches migrations 001 (unique order_id, recipient_steamid, is_gift)
+        // and 005 (grant_status, grant_error) so a fresh install that never
+        // runs the migrator still gets the full schema. CREATE TABLE IF NOT
+        // EXISTS never alters an existing table, so this is safe for upgrades.
         let query = db.queryFormat(`CREATE TABLE IF NOT EXISTS ${table} (
                                       id int(10) unsigned NOT NULL AUTO_INCREMENT,
                                       payment_gateway VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       order_id varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       payer_id varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       payer_steamid varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
+                                      recipient_steamid varchar(150) COLLATE utf8mb4_unicode_ci NULL,
                                       payer_email varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       payer_name varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       payer_surname varchar(150) COLLATE utf8mb4_unicode_ci NULL,
@@ -49,8 +54,12 @@ var salesModel = {
                                       amount_currency varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       status varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
                                       sale_type tinyint(4) NOT NULL,
+                                      is_gift tinyint(4) NOT NULL DEFAULT 0,
+                                      grant_status varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+                                      grant_error varchar(255) COLLATE utf8mb4_unicode_ci NULL,
                                       created_on datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                                      PRIMARY KEY (id)
+                                      PRIMARY KEY (id),
+                                      UNIQUE KEY ux_tbl_sales_order (order_id)
                                       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
         let queryRes = await db.query(query, true);
         if (!queryRes) {
@@ -142,6 +151,34 @@ var salesModel = {
       } catch (error) {
         logger.error("error in insertNewSaleRecord->", error);
         reject(error)
+      }
+    });
+  },
+
+  /**
+   * Record whether the VIP was actually granted for a sale. Best-effort by
+   * design: on a table that predates migration 005 the columns do not exist,
+   * and tracking must never break settlement - so unknown-column errors
+   * resolve (unmarked) instead of rejecting. The audit tool reports unmarked
+   * rows as unknown rather than delivered.
+   */
+  setGrantStatus: function (orderId, status, error) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        if (!orderId) return resolve(false);
+        const safe = String(status) === 'granted' ? 'granted' : 'failed';
+        const query = db.queryFormat(
+          `UPDATE ${table} SET grant_status = ?, grant_error = ? WHERE order_id = ? LIMIT 1`,
+          [safe, error ? String(error).slice(0, 255) : null, String(orderId)]);
+        await db.query(query);
+        return resolve(true);
+      } catch (e) {
+        if (e && (e.code === 'ER_BAD_FIELD_ERROR' || /grant_status|grant_error/.test((e && e.message) || ''))) {
+          return resolve(false);
+        }
+        logger.error("error in setGrantStatus->", e);
+        // A tracking write must never fail the settlement that called it.
+        return resolve(false);
       }
     });
   },

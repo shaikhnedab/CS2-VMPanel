@@ -52,6 +52,7 @@ module.exports = app => {
   const { auditRecords, getAuditRecord } = require("../controllers/auditLogs.js")
   const { initPayUPayment, payuReturnSuccess, payuReturnError } = require("../controllers/payU.js")
   const { initRazorpayPayment } = require('../controllers/razorPay');
+  const { initPayPalOrder } = require('../controllers/paypal.js');
   const { addPanelServerBundle, getPanelBundlesList, deletePanelBundle } = require("../controllers/panelServerBundles.js")
 
   //Public Router
@@ -105,6 +106,9 @@ module.exports = app => {
 
   // RazorPay routes
   app.post('/initrazorpaypayment', authMiddleware.checkSteamAuthenticated, initRazorpayPayment);
+
+  // PayPal order creation (server-priced; the button approves this order id).
+  app.post('/initpaypalorder', authMiddleware.checkSteamAuthenticated, initPayPalOrder);
 
   // Gift receiver verification (Steam-logged-in buyers only, rate-limited)
   app.post('/resolverecipient', resolveLimiter, authMiddleware.checkSteamAuthenticated, resolveRecipient);

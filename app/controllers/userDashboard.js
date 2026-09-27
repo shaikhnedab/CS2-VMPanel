@@ -254,9 +254,22 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       // vip_flag would let any buyer grant themselves an admin group for the
       // purchased period. It is resolved from our own row further down.
       let flag = null
+      // The server row bound during quote validation, reused by verification
+      // so a price edit cannot land between the two reads.
+      let boundRow = null;
       const subDaysFromRow = (row) => (row && Number(row.vip_days)) || Number(reqBody.serverData.vip_days || 0)
       let subDays = (reqBody.serverData.vip_days / 1)
       const paymentData = reqBody.paymentData
+
+      // Reject unknown purchase types and gateways up front, with a message
+      // that says what is wrong. Without this an unknown buyType fell through
+      // to sale_type 0 and died later as the opaque "Sale Type Missing", while
+      // an unknown gateway reached the currency check (which passes anything
+      // it does not recognise) and only failed at verification.
+      const KNOWN_BUY_TYPES = ['newPurchase', 'renewPurchase', 'giftPurchase', 'newPurchaseBundle'];
+      if (!KNOWN_BUY_TYPES.includes(reqBody.buyType)) return reject("Unknown purchase type");
+      const KNOWN_GATEWAYS = ['paypal', 'payu', 'razorpay'];
+      if (!KNOWN_GATEWAYS.includes(String(reqBody.gateway || '').toLowerCase())) return reject("Unknown payment gateway");
 
       // ---- Server-side quote validation (never trust client price/table/flag) ----
       const quotedAmount = Number(paymentData && (paymentData.amount_paid ?? (paymentData.purchase_units && paymentData.purchase_units[0] && paymentData.purchase_units[0].amount && paymentData.purchase_units[0].amount.value)));
@@ -281,6 +294,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         // Resolve each tbl_name from DB and enforce price/currency/days match.
         // giftPurchase belongs here too: it grants a VIP just like a purchase,
         // so it must not be able to skip the price/currency binding.
+        // The bound row is kept for the verification step below: re-fetching
+        // it there would let an admin price edit land between the check and
+        // the charge comparison (fail-after-charge on a race nobody can see).
         for (const t of tbls) {
           const srv = await panelServerModal.getPanelServerDetails(t).catch(() => null);
           if (!srv) return reject("Invalid server selection");
@@ -295,6 +311,7 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           }
           flag = srv.vip_flag;         // ours, not the browser's
           subDays = subDaysFromRow(srv)
+          boundRow = srv;
         }
       }
       // Bundles are validated per-server inside the newPurchaseBundle branch via checkVipExists;
@@ -310,7 +327,9 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       // reaching here with one is a configuration or tampering problem.
       let expected = null;
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'renewPurchase' || reqBody.buyType === 'giftPurchase') {
-        const srv = await panelServerModal.getPanelServerDetails(String(serverTable).split(',')[0].trim()).catch(() => null);
+        // Reuse the row bound above; a second fetch could observe a different
+        // price than the one just validated.
+        const srv = boundRow;
         if (!srv) return reject("Invalid server selection");
         expected = { amount: Number(srv.vip_price), currency: srv.vip_currency };
       } else if (reqBody.buyType === 'newPurchaseBundle') {
@@ -420,7 +439,13 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
       // every one of them throw a TDZ ReferenceError.)
       // Quoted canonical 64-bit target for sv_ rows (buyer or gift recipient).
       const vipTarget = '"' + (isGift ? recipientSteamId64 : buyerId64) + '"';
-      const vipName = isGift ? `//Gift for ${recipientSteamId64} (from ${finalUserName})` : "//" + finalUserName;
+      // Steam display/real names are attacker-influenced and land in the sv_
+      // name column (rendered by admin pages and the game plugin). Strip
+      // control characters, collapse whitespace and cap the length so a
+      // crafted profile cannot smuggle line breaks, terminal escapes or an
+      // oversized value into the database.
+      const cleanVipName = (s) => String(s == null ? '' : s).replace(/[\x00-\x1F\x7F]/g, '').replace(/\s+/g, ' ').trim().slice(0, 64);
+      const vipName = isGift ? `//Gift for ${recipientSteamId64} (from ${cleanVipName(finalUserName)})` : "//" + cleanVipName(finalUserName);
 
       // ---- Pre-grant validation, BEFORE the sale row is written ----
       // These used to run after the insert, so a refusal (receiver already has
@@ -471,8 +496,25 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         }
       }
 
-      // Only now is the order consumed.
-      await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
+      // Only now is the order consumed. A duplicate key here means a concurrent
+      // double-submit already wrote this order: the UNIQUE(order_id) constraint
+      // (migration 001, and the fresh-install DDL) turns the check-then-insert
+      // race into a safe failure instead of a double grant. Report it plainly
+      // rather than leaking the raw database error to the buyer.
+      const saleOrderId = paymentInsertObj.order_id;
+      try {
+        await salesModal.insertNewSaleRecord(paymentInsertObj, reqBody.gateway)
+      } catch (e) {
+        if (e && (e.code === 'ER_DUP_ENTRY' || e.errno === 1062 || /Duplicate entry/i.test(String((e && e.message) || e)))) {
+          return reject("Duplicate payment: this order was already processed");
+        }
+        throw e;
+      }
+      // Grant tracking (migration 005): the sale row proves money moved, not
+      // that the VIP was delivered. Every path below marks granted/failed so
+      // support can tell the difference. Best-effort: tracking must never
+      // break settlement, and setGrantStatus already swallows its own errors.
+      const markGrant = (ok, err) => salesModal.setGrantStatus(saleOrderId, ok ? 'granted' : 'failed', err).catch(() => {});
 
       if (reqBody.buyType === 'newPurchase' || reqBody.buyType === 'giftPurchase') {
 
@@ -490,10 +532,14 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
             server: singleServerTables,
             secKey: secKey
           })
-          if (!extended) return reject("Could not extend the existing VIP. Contact support with your order reference.");
+          if (!extended) {
+            await markGrant(false, "extend failed");
+            return reject("Could not extend the existing VIP. Contact support with your order reference.");
+          }
           for (let i = 0; i < singleServerTables.length; i++) {
             await refreshBestEffort(singleServerTables[i]);
           }
+          await markGrant(true);
           return resolve(extended);
         }
 
@@ -512,11 +558,13 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           for (let i = 0; i < newVipInsertObj.server.length; i++) {
             await refreshBestEffort(newVipInsertObj.server[i]);
           }
+          await markGrant(true);
           resolve(insertRes)
         } else {
           // A falsy grant must reject loudly with the order reference: the
           // sale row above is already written, so a silent hang leaves money
           // taken with no VIP and no message telling the buyer what to quote.
+          await markGrant(false, "insert returned nothing");
           return reject("VIP grant failed after payment. Contact support with your order reference.");
         }
       } else if (reqBody.buyType === 'renewPurchase') {
@@ -536,8 +584,10 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
           for (let i = 0; i < updateVipObj.server.length; i++) {
             refreshBestEffort(updateVipObj.server[i]);
           }
+          await markGrant(true);
           resolve(updateRes)
         } else {
+          await markGrant(false, "renewal updated nothing");
           return reject("VIP renewal failed after payment. Contact support with your order reference.");
         }
       } else if (reqBody.buyType === 'newPurchaseBundle') {
@@ -589,8 +639,10 @@ const afterPaymentProcessFunc = (reqBody, reqUser, secKey) => {
         // walk away believing all servers are covered. Name the failed ones so
         // support can grant exactly those.
         if (bundleFailures.length) {
+          await markGrant(false, "bundle failed on " + bundleFailures.join(','));
           return reject("VIP grant failed on " + bundleFailures.join(', ') + " after payment. Contact support with your order reference.");
         }
+        await markGrant(true);
         resolve(true)
       } else {
         reject("Something Went Wrong")

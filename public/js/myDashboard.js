@@ -155,86 +155,8 @@ function slotId(prefix, name, i) {
   return ((name ? String(name).replace(/[^A-Za-z0-9_]/g, '') : '') || ('slot' + i)) + prefix;
 }
 
-function fetchPBundleListajax() {
-
-  fetch('/getpanelbundleslistud', {
-    method: 'get',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json'
-    }
-  })
-    .then((res) => { return res.json(); })
-    .then((response) => {
-      if (response.success == true) {
-
-        let dataArray = response.data.res
-
-        let htmlString = "";
-
-        for (let i = 0; i < dataArray.length; i++) {
-
-          let serversHtml = '', serversTblNames = []
-          for (let j = 0; j < dataArray[i].bundleServersData.length; j++) {
-            serversHtml += `<a class="vmp-badge violet" href="steam://connect/${escHtml(dataArray[i].bundleServersData[j].server_ip + ':' + dataArray[i].bundleServersData[j].server_port)}">${escHtml(dataArray[i].bundleServersData[j].server_name)}</a>`
-            serversTblNames.push(dataArray[i].bundleServersData[j].tbl_name)
-          }
-
-          let serverDataObj = {
-            "id": dataArray[i].id,
-            "server_ip": "-",
-            "server_port": "-",
-            "server_name": dataArray[i].bundle_name,
-            // Must match the server-rendered payload: settlement looks the
-            // bundle up by this key to read our own price and currency.
-            "bundle_name": dataArray[i].bundle_name,
-            "vip_price": dataArray[i].bundle_price,
-            "vip_currency": dataArray[i].bundle_currency,
-            "vip_days": dataArray[i].bundle_sub_days,
-            "tbl_name": serversTblNames.join(','),
-            "vip_flag": dataArray[i].bundle_flags
-          }
-
-          let payload = encodeURIComponent(JSON.stringify(serverDataObj))
-          let slot = slotId('dynbundlebuy', dataArray[i].bundle_name, i);
-          let altPay = '';
-          if (typeof payuActive !== 'undefined' && payuActive) {
-            altPay += `<button type="button" class="btn btn-success btn-block" data-checkout data-gateway="payu" data-payload="${payload}" data-buytype="newPurchaseBundle" aria-label="Buy bundle with PayU"><img src="./images/payumoney.png" height="20" width="76" alt="PayU"></button>`;
-          }
-          if (typeof razorpayActive !== 'undefined' && razorpayActive) {
-            altPay += `<button type="button" class="btn btn-success btn-block" data-checkout data-gateway="razorpay" data-payload="${payload}" data-buytype="newPurchaseBundle" aria-label="Buy bundle with Razorpay"><img src="./images/razorpay.svg" height="20" width="76" alt="Razorpay"></button>`;
-          }
-
-          htmlString += `<div class="col-xl-4 col-lg-6 col-md-6 col-sm-12">
-                          <div class="card vmp-product">
-                            <div class="card-body">
-                              <p class="eyebrow">Bundle · ${escHtml(dataArray[i].bundle_sub_days)} days each</p>
-                              <h4 class="card-title truncate" title="${escHtml(dataArray[i].bundle_name)}">${escHtml(dataArray[i].bundle_name)}</h4>
-                              <div class="vmp-price tnum">${escHtml(dataArray[i].bundle_price + " " + dataArray[i].bundle_currency)}</div>
-                              <div class="vmp-perks">${serversHtml}</div>
-                            </div>
-                            <div class="card-footer">
-                              <div class="vmp-paypal-slot" id="${slot}" data-payload="${payload}" data-buytype="newPurchaseBundle"></div>
-                              ${altPay}
-                            </div>
-                          </div>
-                        </div>`
-
-        }
-
-        document.getElementById("userDashoardServerBundleListing").innerHTML = htmlString
-        document.querySelectorAll('#userDashoardServerBundleListing .vmp-paypal-slot').forEach(function (el) {
-          if (typeof vmpInitPayPalSlot === 'function') vmpInitPayPalSlot(el);
-        });
-      }
-    })
-    .catch(error => {
-      showNotif({ success: false, data: { "error": error } })
-    });
-}
+// NOTE: bundle cards are rendered server-side (views/UserDashboard.ejs).
+// A client-side duplicate renderer lived here; it was dead (never called)
+// and lacked the per-card currency gating, so it was removed.
 //-----------------------------------------------------------------------------------------------------
 
-$(document).ready(function () {
-
-  // fetchPBundleListajax();
-});

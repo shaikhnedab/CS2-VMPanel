@@ -288,7 +288,10 @@ async function main() {
   });
   await ok('store defers third-party SDK scripts', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'views', 'UserDashboard.ejs'), 'utf8');
-    for (const host of ['cdnjs.cloudflare.com/ajax/libs/crypto-js', 'www.paypal.com/sdk/js', 'citruspay.com/bolt', 'checkout.razorpay.com']) {
+    // crypto-js is deliberately absent: nothing referenced CryptoJS, so the
+    // pinned 3.1.9-1 bundle was dead weight with known vulnerabilities.
+    assert.ok(!/crypto-js/.test(html), 'unused crypto-js bundle is not loaded');
+    for (const host of ['www.paypal.com/sdk/js', 'citruspay.com/bolt', 'checkout.razorpay.com']) {
       const m = html.match(new RegExp(`<script[^>]*${host.replace(/\./g, '\\.')}[^>]*>`, 'g')) || [];
       assert.ok(m.length > 0, `${host} present`);
       assert.ok(m.every((t) => /\bdefer\b/.test(t)), `${host} deferred`);
@@ -1179,8 +1182,12 @@ async function main() {
     assert.ok(!/rzp\.razorpay_signature \|\|/.test(ud), 'the incorrect Razorpay signature check is gone');
     // Config toggle defaults to on.
     const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'config', 'index.js'), 'utf8');
-    assert.ok(/verify_payments = envBool\(process\.env\.VERIFY_PAYMENTS, \(\w+\.verify_payments !== false\)\)/.test(cfgSrc),
+    assert.ok(/verify_payments = (productionVerify\()?envBool\(process\.env\.VERIFY_PAYMENTS, \(\w+\.verify_payments !== false\)\)/.test(cfgSrc),
       'verification defaults to enabled (fail closed)');
+    // ...and production cannot turn it off: one mis-set env var must never be
+    // the difference between paid and free VIP.
+    assert.ok(/NODE_ENV/.test(cfgSrc) && /production/.test(cfgSrc) && /verification forced on/.test(cfgSrc),
+      'production forces verification on');
   });
   await ok('store hides gateways that cannot be verified', async () => {
     const dbBridge = require('../app/db/db_bridge');
@@ -1505,11 +1512,19 @@ async function main() {
     assert.ok(/\(reqBody\.serverData \|\| \{\}\)\.bundle_name \|\| \(reqBody\.serverData \|\| \{\}\)\.server_name/.test(ud),
       'bundle resolved by bundle_name, falling back to server_name');
     assert.ok(!/reqBody\.serverData\.bundle_price/.test(ud), 'price is not read from the request');
-    // Both payload builders must send the key the server looks for.
-    for (const rel of ['app/controllers/userDashboard.js', 'public/js/myDashboard.js']) {
-      const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-      assert.ok(/"bundle_name":\s*(bundleList\[i\]|dataArray\[i\])\.bundle_name/.test(src),
-        `${rel} sends bundle_name in the payload`);
+    // The server-rendered payload builder must send the key the server looks for.
+    {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+      assert.ok(/"bundle_name":\s*bundleList\[i\]\.bundle_name/.test(src),
+        'app/controllers/userDashboard.js sends bundle_name in the payload');
+    }
+    // The client-side duplicate renderer is gone: it was dead (never called)
+    // and lacked the per-card currency gating, so bundle cards come only from
+    // the server-rendered view above.
+    {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'myDashboard.js'), 'utf8');
+      assert.ok(!/function fetchPBundleListajax/.test(src),
+        'the dead client-side bundle renderer stays removed');
     }
   });
   await ok('buyer HTML never carries the RCON password', () => {
@@ -1797,6 +1812,60 @@ async function main() {
       const src = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
       assert.ok(!/console\.log\(/.test(src), `${label}: no console.log left in the payment path`);
     }
+  });
+  await ok('sale grants are tracked and concurrent replays fail safe', () => {
+    // Migration 005 gives every sale a grant_status lifecycle (pending ->
+    // granted/failed) so support can tell "paid and delivered" from "paid and
+    // lost" without hand-matching every sv_* table.
+    const mig = fs.readFileSync(path.join(__dirname, '..', 'app', 'db', 'migrations', '005_sale_grant_status.sql'), 'utf8');
+    assert.ok(/ADD COLUMN `grant_status`/.test(mig), 'migration adds grant_status');
+    assert.ok(/ADD COLUMN `grant_error`/.test(mig), '...and grant_error');
+    assert.ok(/ix_tbl_sales_grant/.test(mig), '...and an index');
+    const ddl = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'salesModel.js'), 'utf8');
+    assert.ok(/grant_status/.test(ddl) && /UNIQUE KEY ux_tbl_sales_order/.test(ddl),
+      'fresh installs get grant columns and the order uniqueness without the migrator');
+    assert.ok(/setGrantStatus/.test(ddl), 'salesModel exposes setGrantStatus');
+    // setGrantStatus is best-effort: on a pre-005 table it must resolve, never
+    // reject, or tracking would break settlement.
+    assert.ok(/ER_BAD_FIELD_ERROR/.test(ddl.split('setGrantStatus')[1].split('orderExists')[0]),
+      'unknown-column errors resolve instead of rejecting');
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    assert.ok(/markGrant\(true\)/.test(ud), 'successful grants are marked');
+    assert.ok(/markGrant\(false/.test(ud), 'failed grants are marked with a reason');
+    // The check-then-insert race is closed by the UNIQUE constraint; the
+    // loser's duplicate-key error must read as "already processed", not leak
+    // a raw ER_DUP_ENTRY to the buyer.
+    assert.ok(/ER_DUP_ENTRY/.test(ud), 'duplicate-key inserts are caught');
+    assert.ok(/already processed/.test(ud), '...and reported plainly');
+  });
+  await ok('paypal orders are created server-side, not in the browser', () => {
+    // The button used to build the order from the page price; a mismatch was
+    // only found after capture (paid, no VIP). The server now creates the
+    // order from its own row and hands the button an order id to approve.
+    const ctl = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'paypal.js'), 'utf8');
+    assert.ok(/initPayPalOrderFunc/.test(ctl), 'a PayPal init controller exists');
+    assert.ok(/getPanelServerDetails/.test(ctl) || /getPanelBundlesListFunc/.test(ctl), '...priced from the database');
+    assert.ok(!/reqBody\.serverData\.vip_price[^)]/.test(ctl.replace(/Number\(\(reqBody\.serverData \|\| \{\}\)\.vip_price\)/g, '')),
+      '...never from the request alone');
+    assert.ok(/canVerifyPayPal/.test(ctl), '...only when PayPal is verifiable');
+    assert.ok(/\/v2\/checkout\/orders/.test(ctl), '...via the Orders API');
+    const router = fs.readFileSync(path.join(__dirname, '..', 'app', 'routes', 'router.js'), 'utf8');
+    assert.ok(/\/initpaypalorder/.test(router) && /checkSteamAuthenticated/.test(router.split('/initpaypalorder')[0].slice(-200)),
+      'POST /initpaypalorder is authenticated');
+    const client = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'paypalPayment.js'), 'utf8');
+    assert.ok(/\/initpaypalorder/.test(client), 'the button approves a server-created order');
+    assert.ok(!/actions\.order\.create/.test(client), '...instead of building one from page data');
+  });
+  await ok('settlement rejects unknown types and gateways up front', () => {
+    const ud = fs.readFileSync(path.join(__dirname, '..', 'app', 'controllers', 'userDashboard.js'), 'utf8');
+    assert.ok(/KNOWN_BUY_TYPES/.test(ud) && /Unknown purchase type/.test(ud), 'unknown buyType rejected clearly');
+    assert.ok(/KNOWN_GATEWAYS/.test(ud) && /Unknown payment gateway/.test(ud), 'unknown gateway rejected before the currency check');
+    // The verification step reuses the already-bound row instead of fetching
+    // again, so a price edit cannot land between check and comparison.
+    assert.ok(/let boundRow = null/.test(ud), 'the bound row is kept');
+    assert.ok(/const srv = boundRow/.test(ud), '...and reused by verification');
+    // Steam names land in the sv_ name column: controls stripped, capped.
+    assert.ok(/cleanVipName/.test(ud) && /slice\(0, 64\)/.test(ud), 'vip names are sanitized and capped');
   });
   await ok('a renewal that extends nothing is not reported as success', () => {
     const vip = fs.readFileSync(path.join(__dirname, '..', 'app', 'models', 'vipModel.js'), 'utf8');
