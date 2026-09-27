@@ -120,19 +120,48 @@ create a super-admin. Fix or remove the file and restart.
 ## Upgrading an existing install
 
 ```bash
-docker compose pull && docker compose up -d --force-recreate
-docker compose exec panel npm run migrate    # idempotent; safe to re-run
+docker compose pull
+docker compose up -d --force-recreate
+docker compose logs -f panel | grep -i migrat
 ```
 
 `--force-recreate` matters: container environment is snapshotted at create time, so without it the old
 image and env keep running.
 
-**Run `npm run migrate` on upgrades.** The install wizard runs migrations, but a panel that is already
-set up 404s `/install`, so an in-place upgrade never applies them. The unique index on
-`tbl_sales.order_id` is what stops one payment from granting a VIP twice — it is created by migration
-`001`, so skipping migrations removes that protection. `schema_migrations` records what has run;
-statements that are already applied are tolerated (`ER_DUP_KEYNAME` / `ER_DUP_FIELDNAME`), so the
-command is safe to repeat.
+**On Docker you do not run migrations by hand.** The image's `CMD` is
+`node app/db/migrate.js && node server.js`, so every container start applies pending migrations before
+the server accepts a request. It is idempotent — `schema_migrations` records what has run, and
+statements that are already applied are tolerated (`ER_DUP_KEYNAME` / `ER_DUP_FIELDNAME`) — so it is
+also safe to trigger a container restart purely to re-run them.
+
+If a migration fails the `&&` short-circuits and the panel deliberately does **not** start, so you see
+it in the logs rather than serving traffic against a half-migrated schema:
+
+```
+docker compose logs panel | grep -iE "migrat|error"
+```
+
+To confirm what has been applied:
+
+```bash
+docker compose exec panel node -e "const d=require('./app/db/db_bridge');d.query('SELECT filename, applied_at FROM schema_migrations ORDER BY filename').then(r=>{console.table(r);process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)})"
+```
+
+The explicit `process.exit()` matters — the connection pool keeps the event loop alive, so without it
+the command hangs instead of printing. Note there is no `true` second argument: that selects a single
+record and would print only one row.
+
+**Bare-metal / manual `node` start** (no container) does need the explicit step, because nothing else
+runs it:
+
+```bash
+npm run migrate     # == node app/db/migrate.js ; exits 0 and no-ops before setup
+npm start
+```
+
+The unique index on `tbl_sales.order_id` is what stops one payment from granting a VIP twice. It is
+created by migration `001`, so a panel installed before migrations existed has no replay protection
+until one of the paths above has run at least once.
 
 A `config.json` written by an older version still works; new keys fall back to documented defaults.
 
