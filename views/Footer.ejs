@@ -53,11 +53,20 @@
 
 </div>
 </div>
+
+<!--
+  The confirm/checkout dialog is re-parented to <body> by vmp-ui.js.
+  It used to live inside .main-panel, and any page ancestor that forms a
+  stacking context (a transformed .card from the reveal animation, the
+  scroll container, the blurred navbar) could then paint over the dialog -
+  leaving the store card's buttons visible on top of the checkout form.
+  As a direct child of <body> it can only be beaten by the top layer.
+-->
 </body>
 
 </html>
 
-<script src="./js/vmp-ui.js?v=5"></script>
+<script src="./js/vmp-ui.js?v=6"></script>
 <script>
   $(document).ready(function () {
     const x = new Date().getFullYear();

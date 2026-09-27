@@ -1394,3 +1394,86 @@ div[data-notify="container"] [data-notify="progressbar"] { display: none !import
    because `.btn-block` sets display:block, which would otherwise defeat the
    HTML hidden attribute. */
 .vmp-gift-only[hidden] { display: none !important; }
+
+/* ---------- checkout / confirm dialog ---------- */
+/* Belt and braces with the JS re-parent in vmp-ui.js: the dialog is opaque and
+   sits above every page layer, so a card, the blurred navbar or the command
+   palette can never show through the checkout form. `.modal` is given its own
+   stacking context explicitly rather than relying on z-index alone. */
+.modal#userConfirmationModal {
+  z-index: 4000 !important;
+  isolation: isolate;
+}
+.modal#userConfirmationModal .modal-content {
+  background: var(--surface-solid) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  /* Opaque all the way down: a translucent input or body let the page behind
+     read through the form. */
+}
+.modal#userConfirmationModal .modal-body,
+.modal#userConfirmationModal .modal-header,
+.modal#userConfirmationModal .modal-footer,
+.modal#userConfirmationModal input,
+.modal#userConfirmationModal select,
+.modal#userConfirmationModal textarea,
+.modal#userConfirmationModal .form-control {
+  background-color: var(--surface-solid) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+}
+.modal-backdrop { z-index: 3990 !important; }
+
+/* ---------- payment actions: say what the button does ---------- */
+/* A bare gateway logo gave no clue whether the purchase was for you or for the
+   gift receiver, so every payment button now carries a visible label beside
+   the logo. */
+.vmp-pay-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* min-width:0 lets the label shrink instead of pushing the button wider than
+   its card; the logo never shrinks. The button wraps rather than overflowing
+   on a narrow card, and the label breaks on word boundaries. */
+.vmp-pay-btn { flex-wrap: wrap; row-gap: 4px; text-align: center; line-height: 1.25; }
+.vmp-pay-btn img { flex: 0 0 auto; width: auto; max-width: 34%; object-fit: contain; }
+.vmp-pay-btn span { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* Each action on an owned card is its own labelled block, so "top up mine"
+   and "gift to a friend" cannot be confused for one another. */
+.vmp-action {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 14px 14px;
+  background: var(--surface-2);
+  /* The card footer is a flex/grid child; without this the block could size
+     itself to its content and spill past the card edge. */
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.vmp-action + .vmp-action { margin-top: 10px; }
+.vmp-action-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vmp-action-label .material-icons { flex: 0 0 auto; }
+.vmp-action-label .material-icons { font-size: 18px; opacity: 0.85; }
+.vmp-action-gift { border-color: var(--line-strong); }
+.vmp-action-gift .vmp-action-label { color: var(--accent); }
+.vmp-action .vmp-paypal-slot { margin-bottom: 8px; }

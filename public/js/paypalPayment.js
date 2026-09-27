@@ -43,6 +43,12 @@ function vmpInitOwnedGiftSlots() {
       if (on) vmpInitPayPalSlot(el);
     }
   });
+  // A wrapper (rather than a bare button) can be toggled as one unit, so the
+  // heading and its hint appear and disappear with the buttons.
+  document.querySelectorAll('.vmp-action-gift').forEach(function (el) {
+    if (on) el.removeAttribute('hidden');
+    else el.setAttribute('hidden', '');
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function () {

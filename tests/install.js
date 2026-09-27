@@ -933,7 +933,25 @@ async function main() {
     // hidden gift control per gateway, so count only the visible ones.
     // Count only VISIBLE buttons inside the store card: the gift control is
     // marked hidden, and the membership table has its own (unrelated) controls.
-    const visible = (html, g) => (cardSlice(html).match(new RegExp(`<button[^>]*data-gateway="${g}"(?![^>]*hidden)`, 'g')) || []).length;
+    // A button counts as visible unless it carries `hidden` itself or sits inside
+    // a `hidden` gift wrapper (the gift block is toggled as one unit).
+    const visible = (html, g) => {
+      const slice = cardSlice(html);
+      const re = new RegExp(`<button[^>]*data-gateway="${g}"[^>]*>`, 'g');
+      return (slice.match(re) || []).filter((tag) => {
+        if (/\shidden(\s|>|=)/.test(tag)) return false;
+        // Walk back to the nearest opening <div ...> to see if a wrapper is hidden.
+        const at = slice.indexOf(tag);
+        const before = slice.slice(0, at);
+        const lastOpen = before.lastIndexOf('<div');
+        const lastClose = before.lastIndexOf('</div>');
+        if (lastOpen > lastClose) {
+          const wrapper = before.slice(lastOpen, before.indexOf('>', lastOpen) + 1);
+          if (/\shidden(\s|>|=)/.test(wrapper)) return false;
+        }
+        return true;
+      }).length;
+    };
     let h = ejsMod.render(source, locals('INR', true, false, false));
     assert.strictEqual(visible(h, 'payu'), 1, 'payu shown when configured');
     assert.strictEqual(visible(h, 'razorpay'), 0, 'razorpay hidden when not configured');
@@ -943,8 +961,11 @@ async function main() {
     assert.strictEqual(visible(h, 'payu'), 0, 'payu hidden when not configured');
     // The razorpay case above renders only razorpay, so its gift control must be
     // present in the markup yet hidden behind the gift switch.
-    assert.ok(/vmp-gift-only[^>]*data-gateway="razorpay"[^>]*hidden/.test(cardSlice(h)),
-      'the razorpay gift control exists but ships hidden');
+    // The gift block ships hidden, and the razorpay gift button lives inside it.
+    assert.ok(/class="vmp-action vmp-action-gift vmp-gift-only"[^>]*hidden/.test(cardSlice(h)),
+      'the gift block ships hidden in the markup');
+    assert.ok(/data-gateway="razorpay"[^>]*data-buytype="giftPurchase"/.test(cardSlice(h)),
+      'the razorpay gift control exists inside it');
 
     // INR-only gateways key off the card's own currency, not the panel's:
     // an INR-priced server stays buyable even when the panel default is USD.

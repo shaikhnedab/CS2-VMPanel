@@ -78,6 +78,20 @@
     });
   }
 
+  /* ---------- dialog must out-rank the page ---------- */
+  // The confirm/checkout dialog shipped inside .main-panel, so any page ancestor
+  // that formed a stacking context (a .card still carrying the reveal
+  // animation's transform, the panel's own scroll container) could paint over
+  // it - the store card's PayU button showed straight through the checkout
+  // form. Re-parent it to <body> so only the top layer can cover it.
+  (function hoistDialogs() {
+    var ids = ['userConfirmationModal', 'vmpPalette', 'vmpPaletteScrim', 'vmpNavScrim'];
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentNode !== document.body) document.body.appendChild(el);
+    });
+  })();
+
   /* ---------- animated counters ---------- */
   function animateCount(el) {
     var raw = (el.getAttribute('data-count') || el.textContent || '').replace(/[^0-9]/g, '');
@@ -206,6 +220,17 @@
     catch (err) { window.vmpToast('Could not start checkout', 'warning'); return; }
     var type = btn.getAttribute('data-buytype') || 'newPurchase';
     var gateway = btn.getAttribute('data-gateway');
+
+    // Gifting gate. The gateway success handlers call vmpGetGiftFields() too,
+    // but that is far too late: by then the buyer has already been charged. A
+    // gift with no verified receiver must be stopped HERE, before the payment
+    // sheet opens. vmpGetGiftFields() returns null and explains why; false means
+    // "not gifting", which is fine.
+    if (typeof vmpGetGiftFields === 'function' && type !== 'renewPurchase') {
+      var gate = vmpGetGiftFields();
+      if (gate === null) return;
+    }
+
     try {
       if (gateway === 'payu' && typeof initPayUpayment === 'function') initPayUpayment(payload, type);
       else if (gateway === 'razorpay' && typeof initRazorpayPayment === 'function') initRazorpayPayment(payload, type);
